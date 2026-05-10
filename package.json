@@ -1,0 +1,21 @@
+{
+  "name": "sfa-slack-bot",
+  "version": "1.0.0",
+  "description": "Field Sales Automation Slack Bot powered by Salesforce",
+  "main": "dist/app.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc && node dist/app.js",
+    "start": "node dist/app.js",
+    "watch": "tsc --watch"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.7.2",
+    "dotenv": "^16.4.0",
+    "jsforce": "^3.10.14"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}
