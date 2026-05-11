@@ -1,90 +1,54 @@
 import { App } from '@slack/bolt';
 import {
-  getSFUserByEmail,
-  getSFAUserByEmail,
-  getSFAUserByUserId,
-  getManagerStatus,
-  getDailyVisits,
-  getActiveVisit,
-  getTeamVisits,
-  getStoresByIds,
-  VisitRecord,
+  getSFUserByEmail, getSFAUserByEmail, getSFAUserByUserId, getManagerStatus,
+  getDailyVisits, getActiveVisit, getTeamVisits, getStoresByIds,
+  getVisitInsights, getPastVisits, getTodayAttendance, getStoreWithLocation,
+  VisitRecord, RetailStoreRecord,
 } from '../salesforce/soql';
-import { buildRepHomeView } from './views/repHome';
+import { buildRepHomeView, VisitInsights } from './views/repHome';
 import { buildManagerHomeView } from './views/managerHome';
+import { buildMarkAttendanceModal, buildDailyVisitsView } from '../modals/markAttendanceModal';
+import { buildPastVisitsModal, buildPastVisitsResultsView } from '../modals/pastVisitsModal';
+import { buildOnboardingStep1Modal, buildOnboardingStep2Modal, buildOnboardingStep3Modal } from '../modals/retailerOnboardingModal';
 import * as B from '../utils/blocks';
 
 const sfUserCache = new Map<string, { sfUserId: string; sfaUser: any; sfUserRecordId: string; isManager: boolean; slackUserId: string }>();
+const pageState = new Map<string, string>();
 
 export async function resolveUser(slackUserId: string, client: any): Promise<{
-  sfUserId: string;
-  sfaUser: any;
-  sfUserRecordId: string;
-  isManager: boolean;
+  sfUserId: string; sfaUser: any; sfUserRecordId: string; isManager: boolean;
 } | null> {
-  if (sfUserCache.has(slackUserId)) {
-    return sfUserCache.get(slackUserId)!;
-  }
-
+  if (sfUserCache.has(slackUserId)) return sfUserCache.get(slackUserId)!;
   const slackUser = await client.users.info({ user: slackUserId });
   const email = slackUser.user?.profile?.email;
   if (!email) return null;
 
   const sfaUser = await getSFAUserByEmail(email);
-
   if (sfaUser) {
     const sfUser = await getSFUserByEmail(email);
-    const isManager = sfUser ? !!sfUser.UserRoleId : false;
-    const result = { sfUserId: sfaUser.Id, sfaUser, sfUserRecordId: sfUser?.Id || '', isManager, slackUserId };
-    sfUserCache.set(slackUserId, result);
-    return result;
+    const r = { sfUserId: sfaUser.Id, sfaUser, sfUserRecordId: sfUser?.Id || '', isManager: !!sfUser?.UserRoleId, slackUserId };
+    sfUserCache.set(slackUserId, r); return r;
   }
-
   const sfUser = await getSFUserByEmail(email);
   if (!sfUser) return null;
-
   const sfaUserByUserId = await getSFAUserByUserId(sfUser.Id);
-  if (sfaUserByUserId) {
-    const isManager = !!sfUser.UserRoleId;
-    const result = { sfUserId: sfaUserByUserId.Id, sfaUser: sfaUserByUserId, sfUserRecordId: sfUser.Id, isManager, slackUserId };
-    sfUserCache.set(slackUserId, result);
-    return result;
-  }
-
-  const isManager = !!sfUser.UserRoleId;
-  const result = { sfUserId: sfUser.Id, sfaUser: null, sfUserRecordId: sfUser.Id, isManager, slackUserId };
-  sfUserCache.set(slackUserId, result);
-  return result;
+  const r = { sfUserId: sfaUserByUserId?.Id || sfUser.Id, sfaUser: sfaUserByUserId || null, sfUserRecordId: sfUser.Id, isManager: !!sfUser.UserRoleId, slackUserId };
+  sfUserCache.set(slackUserId, r); return r;
 }
 
-export function clearUserCache(slackUserId: string) {
-  sfUserCache.delete(slackUserId);
-}
-
-export function getCachedUser(slackUserId: string) {
-  return sfUserCache.get(slackUserId);
-}
+export function clearUserCache(slackUserId: string) { sfUserCache.delete(slackUserId); pageState.delete(slackUserId); }
+export function getCachedUser(slackUserId: string) { return sfUserCache.get(slackUserId); }
 
 async function collectStoreIds(...visits: (VisitRecord | null)[]): Promise<string[]> {
   const ids = new Set<string>();
-  for (const v of visits) {
-    if (v?.Retail_Store_Custom__c) ids.add(v.Retail_Store_Custom__c);
-  }
+  for (const v of visits) { if (v?.Retail_Store_Custom__c) ids.add(v.Retail_Store_Custom__c); }
   return [...ids];
 }
 
 export async function publishHomeView(app: App, slackUserId: string, client: any) {
   const userCtx = await resolveUser(slackUserId, client);
-
   if (!userCtx) {
-    await client.views.publish({
-      user_id: slackUserId,
-      view: {
-        type: 'home',
-        blocks: [B.section(':warning: *Unable to link your Slack account to Salesforce.* Check your email matches.')],
-      },
-    });
-    return;
+    return client.views.publish({ user_id: slackUserId, view: { type: 'home', blocks: [B.section(':warning: *Unable to link to Salesforce.*')] } });
   }
 
   const { sfaUser, isManager } = userCtx;
@@ -95,33 +59,190 @@ export async function publishHomeView(app: App, slackUserId: string, client: any
     const teamVisits = await getTeamVisits(userCtx.sfUserId, today);
     const storeIds = teamVisits.map((v: any) => v.Retail_Store_Custom__c).filter(Boolean);
     const storeMap = await getStoresByIds(storeIds);
-    const totalOrders = teamVisits.reduce((sum, v: any) => sum + (v.Order_Value__c || 0), 0);
+    const totalOrders = teamVisits.reduce((sum: number, v: any) => sum + (v.Order_Value__c || 0), 0);
     const view = buildManagerHomeView(sfUserName, teamVisits, totalOrders, storeMap);
-    await client.views.publish({ user_id: slackUserId, view });
-  } else {
-    const dailyVisits = await getDailyVisits(userCtx.sfUserId, today);
-    const activeVisit = await getActiveVisit(userCtx.sfUserId);
-    const storeIds = await collectStoreIds(activeVisit, ...dailyVisits);
-    const storeMap = await getStoresByIds(storeIds);
-
-    const weekVisits = await getDailyVisits(userCtx.sfUserId, 'THIS_WEEK');
-    const completed = weekVisits.filter((v: any) => v.Status__c === 'Completed').length;
-    const total = weekVisits.length;
-
-    const view = buildRepHomeView(sfUserName, activeVisit, dailyVisits, { completed, total }, storeMap);
-    await client.views.publish({ user_id: slackUserId, view });
+    return client.views.publish({ user_id: slackUserId, view });
   }
+
+  const [dailyVisits, activeVisit, insights, attendance] = await Promise.all([
+    getDailyVisits(userCtx.sfUserId, today),
+    getActiveVisit(userCtx.sfUserId),
+    getVisitInsights(userCtx.sfUserId),
+    getTodayAttendance(userCtx.sfUserId, today),
+  ]);
+
+  const storeIds = await collectStoreIds(activeVisit, ...dailyVisits);
+  const storeMap = await getStoresByIds(storeIds);
+
+  const weekVisits = await getDailyVisits(userCtx.sfUserId, 'THIS_WEEK');
+  const completed = weekVisits.filter((v: any) => v.Status__c === 'Completed').length;
+
+  pageState.set(slackUserId, 'home');
+  const view = buildRepHomeView(sfUserName, activeVisit, dailyVisits,
+    { completed, total: weekVisits.length }, storeMap, insights, !!attendance);
+  return client.views.publish({ user_id: slackUserId, view });
+}
+
+async function publishAttendanceView(app: App, slackUserId: string, client: any) {
+  const userCtx = await resolveUser(slackUserId, client);
+  if (!userCtx) return;
+
+  const today = B.todayDateString();
+  const [dailyVisits, activeVisit] = await Promise.all([
+    getDailyVisits(userCtx.sfUserId, today),
+    getActiveVisit(userCtx.sfUserId),
+  ]);
+  const storeIds = await collectStoreIds(activeVisit, ...dailyVisits);
+  const storeMap = await getStoresByIds(storeIds);
+
+  // Fetch location data for stores
+  for (const [sid, store] of storeMap) {
+    const locStore = await getStoreWithLocation(sid);
+    if (locStore?.Location__c) {
+      (store as any).Location__c = locStore.Location__c;
+    }
+  }
+
+  pageState.set(slackUserId, 'attendance');
+  const view = buildDailyVisitsView(dailyVisits, storeMap, activeVisit?.Id || null, true);
+  return client.views.publish({ user_id: slackUserId, view });
 }
 
 export function registerAppHome(app: App) {
   app.event('app_home_opened', async ({ event, client }) => {
+    const st = pageState.get(event.user) || 'home';
+    if (st === 'attendance') return publishAttendanceView(app, event.user, client);
     await publishHomeView(app, event.user, client);
   });
 
   app.action('sfa_refresh_home', async ({ ack, body, client }) => {
     await ack();
-    const slackUserId = (body as any).user.id;
-    clearUserCache(slackUserId);
-    await publishHomeView(app, slackUserId, client);
+    const uid = (body as any).user.id;
+    clearUserCache(uid);
+    await publishHomeView(app, uid, client);
+  });
+
+  app.action('sfa_noop', async ({ ack }) => { await ack(); });
+
+  // Mark Attendance
+  app.action('sfa_mark_attendance', async ({ ack, body, client }) => {
+    await ack();
+    try {
+      const modal = buildMarkAttendanceModal();
+      await client.views.open({ trigger_id: (body as any).trigger_id, view: modal });
+    } catch (err: any) { console.error(err); }
+  });
+
+  // Past Visits
+  app.action('sfa_open_past_visits', async ({ ack, body, client }) => {
+    await ack();
+    try {
+      const modal = buildPastVisitsModal();
+      await client.views.open({ trigger_id: (body as any).trigger_id, view: modal });
+    } catch (err: any) { console.error(err); }
+  });
+
+  // Retailer Onboarding
+  app.action('sfa_open_onboarding', async ({ ack, body, client }) => {
+    await ack();
+    try {
+      const modal = buildOnboardingStep1Modal();
+      await client.views.open({ trigger_id: (body as any).trigger_id, view: modal });
+    } catch (err: any) { console.error(err); }
+  });
+
+  // Google Maps
+  app.action('sfa_open_maps', async ({ ack, body, client }) => {
+    await ack();
+    try {
+      const storeId = (body as any).actions[0].value;
+      const store = await getStoreWithLocation(storeId);
+      if (store?.Location__r) {
+        const lat = store.Location__r.Location__Latitude__s;
+        const lng = store.Location__r.Location__Longitude__s;
+        const url = lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : `https://www.google.com/maps/search/${encodeURIComponent(store.Name)}`;
+        await client.chat.postEphemeral({
+          user: (body as any).user.id,
+          channel: (body as any).user.id,
+          text: `:round_pushpin: *${store.Name}* — ${url}`,
+        });
+        if (lat && lng) {
+          const slackUserId = (body as any).user.id;
+          const page = pageState.get(slackUserId);
+          if (page === 'attendance') await publishAttendanceView(app, slackUserId, client);
+        }
+      } else {
+        await client.chat.postEphemeral({
+          user: (body as any).user.id,
+          channel: (body as any).user.id,
+          text: `:warning: No location data for this store.`,
+        });
+      }
+    } catch (err: any) { console.error(err); }
+  });
+
+  // Past Visits Search Submit
+  app.view('sfa_past_visits_search', async ({ ack, view, body, client }) => {
+    try {
+      const slackUserId = (body as any).user.id;
+      const userCtx = getCachedUser(slackUserId);
+      if (!userCtx) { await ack({ response_action: 'errors', errors: { error: 'Session expired.' } }); return; }
+
+      const searchQuery = view.state.values.past_search?.past_search?.value || '';
+      const visits = await getPastVisits(userCtx.sfUserId, searchQuery);
+      const storeIds = visits.map(v => v.Retail_Store_Custom__c).filter(Boolean);
+      const storeMap = await getStoresByIds(storeIds);
+
+      await ack({
+        response_action: 'update',
+        view: buildPastVisitsResultsView(visits, storeMap, searchQuery),
+      });
+    } catch (err: any) {
+      await ack({ response_action: 'errors', errors: { error: `Error: ${err.message}` } });
+    }
+  });
+
+  // Onboarding Step 1 → Step 2
+  app.view('sfa_onboarding_step1_submit', async ({ ack, view, body, client }) => {
+    await ack({
+      response_action: 'update',
+      view: buildOnboardingStep2Modal(),
+    });
+  });
+
+  // Onboarding Step 2 → Step 3
+  app.view('sfa_onboarding_step2_submit', async ({ ack, view, body, client }) => {
+    await ack({
+      response_action: 'update',
+      view: buildOnboardingStep3Modal(),
+    });
+  });
+
+  // Mark Attendance Submit
+  app.view('sfa_attendance_submit', async ({ ack, view, body, client }) => {
+    try {
+      const values = view.state.values;
+      const files = values.attendance_selfie?.attendance_selfie?.files;
+      const slackUserId = (body as any).user.id;
+      const userCtx = getCachedUser(slackUserId);
+      if (!userCtx) { await ack({ response_action: 'errors', errors: { error: 'Session expired.' } }); return; }
+
+      const today = B.todayDateString();
+      const todayVisits = await getDailyVisits(userCtx.sfUserId, today);
+
+      // Update first pending visit with selfie
+      const pendingVisit = todayVisits.find(v => v.Status__c === 'Planned');
+      if (pendingVisit) {
+        const { updateRecord } = require('../salesforce/connection');
+        const fileUrls = files ? files.map((f: any) => f.url_private).join('\n') : '';
+        await updateRecord('Visit__c', pendingVisit.Id, { Check_In_Selfie__c: fileUrls || 'Uploaded' });
+      }
+
+      await ack({ response_action: 'clear' });
+      await publishAttendanceView(app, slackUserId, client);
+    } catch (err: any) {
+      console.error('[Attendance]', err);
+      await ack({ response_action: 'errors', errors: { error: `Error: ${err.message}` } });
+    }
   });
 }

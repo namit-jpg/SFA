@@ -27,6 +27,7 @@ export const SOBJECTS = {
   VISIT_SURVEY_RESPONSE: 'Visit_Survey_Response__c',
   EXPENSE: 'Expense__c',
   SFA_USER: 'SFA_User__c',
+  PARTNER_REQUEST: 'Partner_Request__c',
   RETAIL_STORE: 'RetailStore__c',
   RETAIL_STORE_STANDARD: 'RetailStore',
   ORDER: 'Order',

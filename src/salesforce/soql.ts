@@ -1,4 +1,4 @@
-import { query, queryOne, esc } from './connection';
+import { query, queryOne, esc, insertRecord } from './connection';
 import { SOBJECTS } from '../config';
 
 export interface SFAUser {
@@ -255,6 +255,67 @@ export async function getVisitOrdersCustom(visitId: string): Promise<any[]> {
     `SELECT Id, Order_Number__c, Order_Number__r.OrderNumber, Order_Number__r.Status, Order_Number__r.TotalAmount,
             Promotions__c, Promotions__r.Name
      FROM ${SOBJECTS.ORDER_WITH_PROMOTION}
-     WHERE Order_Number__c IN (SELECT Order__c FROM ${SOBJECTS.VISIT} WHERE Id = '${esc(visitId)}')`
+      WHERE Order_Number__c IN (SELECT Order__c FROM ${SOBJECTS.VISIT} WHERE Id = '${esc(visitId)}')`
   );
 }
+
+export async function getStoreWithLocation(storeId: string): Promise<any | null> {
+  return queryOne<any>(
+    `SELECT Id, Name, Location__c, Location__r.Name, Location__r.Location__Latitude__s, Location__r.Location__Longitude__s
+     FROM ${SOBJECTS.RETAIL_STORE}
+     WHERE Id = '${esc(storeId)}' LIMIT 1`
+  );
+}
+
+export async function getPastVisits(sfaUserId: string, search?: string, limit: number = 50): Promise<VisitRecord[]> {
+  const searchClause = search ? `AND (Retail_Store_Custom__r.Name LIKE '%${esc(search)}%' OR Visit_Outcome__c LIKE '%${esc(search)}%')` : '';
+  return query<VisitRecord>(
+    `SELECT Id, Name, Status__c, PlannedDate__c, Visit_Date__c, Planned_Start_Time__c,
+            ActualStartTime__c, ActualEndTime__c, Beat__c, Beat__r.Name,
+            Retail_Store_Custom__c,
+            AccountId__c, AccountId__r.Name, User__c, SFA_User__c,
+            Visit_Notes__c, Visit_Outcome__c, Order_Value__c, Total_Expense_Amount__c, Type__c, Purpose__c
+     FROM ${SOBJECTS.VISIT}
+     WHERE SFA_User__c = '${esc(sfaUserId)}' AND Status__c = 'Completed'
+     ${searchClause}
+     ORDER BY Visit_Date__c DESC
+     LIMIT ${limit}`
+  );
+}
+
+export async function getVisitInsights(sfaUserId: string): Promise<{
+  totalVisits: number; thisWeekVisits: number; totalOrderValue: number; avgOrderValue: number;
+  lastVisitDate: string | null; lastStore: string | null;
+}> {
+  const [total, thisWeek, orderTotal, last] = await Promise.all([
+    queryOne<{ count: number }>(`SELECT COUNT(Id) count FROM ${SOBJECTS.VISIT} WHERE SFA_User__c = '${esc(sfaUserId)}' AND Status__c = 'Completed'`),
+    queryOne<{ count: number }>(`SELECT COUNT(Id) count FROM ${SOBJECTS.VISIT} WHERE SFA_User__c = '${esc(sfaUserId)}' AND Status__c = 'Completed' AND Visit_Date__c = THIS_WEEK`),
+    queryOne<{ sum: number }>(`SELECT SUM(Order_Value__c) sum FROM ${SOBJECTS.VISIT} WHERE SFA_User__c = '${esc(sfaUserId)}' AND Status__c = 'Completed'`),
+    queryOne<{ Visit_Date__c: string; Retail_Store_Custom__r: { Name: string } }>(
+      `SELECT Visit_Date__c, Retail_Store_Custom__r.Name FROM ${SOBJECTS.VISIT} WHERE SFA_User__c = '${esc(sfaUserId)}' AND Status__c = 'Completed' ORDER BY Visit_Date__c DESC LIMIT 1`
+    ),
+  ]);
+  const n = total?.count || 0;
+  const v = orderTotal?.sum || 0;
+  return {
+    totalVisits: n, thisWeekVisits: thisWeek?.count || 0,
+    totalOrderValue: v, avgOrderValue: n > 0 ? Math.round(v / n) : 0,
+    lastVisitDate: last?.Visit_Date__c || null, lastStore: last?.Retail_Store_Custom__r?.Name || null,
+  };
+}
+
+export async function getTodayAttendance(sfaUserId: string, date: string): Promise<{ Id: string; Check_In_Selfie__c: string } | null> {
+  const dateClause = ['TODAY', 'YESTERDAY', 'TOMORROW', 'LAST_WEEK', 'THIS_WEEK', 'LAST_MONTH'].includes(date) ? date : date;
+  return queryOne<any>(
+    `SELECT Id, Check_In_Selfie__c FROM ${SOBJECTS.VISIT}
+     WHERE SFA_User__c = '${esc(sfaUserId)}' AND Visit_Date__c = ${dateClause}
+     AND Status__c IN ('In Progress', 'Completed') AND Check_In_Selfie__c != null
+     ORDER BY CreatedDate DESC LIMIT 1`
+  );
+}
+
+export async function insertPartnerRequest(data: Record<string, any>): Promise<string> {
+  return insertRecord(SOBJECTS.PARTNER_REQUEST, data);
+}
+
+export { esc, insertRecord };

@@ -1,12 +1,23 @@
 import { VisitRecord, RetailStoreRecord } from '../../salesforce/soql';
 import * as B from '../../utils/blocks';
 
+export interface VisitInsights {
+  totalVisits: number;
+  thisWeekVisits: number;
+  totalOrderValue: number;
+  avgOrderValue: number;
+  lastVisitDate: string | null;
+  lastStore: string | null;
+}
+
 export function buildRepHomeView(
   sfaUserName: string,
   activeVisit: VisitRecord | null,
   dailyVisits: VisitRecord[],
   weeklyStats: { completed: number; total: number },
-  storeMap: Map<string, RetailStoreRecord>
+  storeMap: Map<string, RetailStoreRecord>,
+  insights: VisitInsights | null,
+  attendanceMarked: boolean
 ): any {
   const today = B.todayDateString();
   const todayVisits = dailyVisits.filter(v => v.Visit_Date__c === today || v.PlannedDate__c === today);
@@ -14,13 +25,39 @@ export function buildRepHomeView(
 
   function storeName(visit: VisitRecord): string {
     const store = storeMap.get(visit.Retail_Store_Custom__c);
-    return store?.Name || 'Unknown Store';
+    return store?.Name || 'N/A';
   }
 
   blocks.push(B.header(`:wave: Hey ${sfaUserName}, welcome to SFA`));
-  blocks.push(B.context(`:calendar: ${B.formatDate(today)} | ${weeklyStats.completed}/${weeklyStats.total} visits done this week`));
+
+  // ─── Visit Insights ───
+  if (insights) {
+    const lines = [
+      `*:chart_with_upwards_trend: Visit Insights*`,
+      `:white_check_mark: Total: ${insights.totalVisits} | This week: ${insights.thisWeekVisits}`,
+      `:moneybag: Total Orders: ${B.formatCurrency(insights.totalOrderValue)} | Avg: ${B.formatCurrency(insights.avgOrderValue)}`,
+      insights.lastVisitDate ? `:calendar: Last: ${B.formatDate(insights.lastVisitDate)} at *${insights.lastStore || 'N/A'}*` : null,
+    ].filter(Boolean).join('\n');
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: lines } });
+  }
+
+  blocks.push(B.context(`:calendar: ${B.formatDate(today)} | ${weeklyStats.completed}/${weeklyStats.total} visits this week`));
   blocks.push(B.divider());
 
+  // ─── Quick Actions Row ───
+  const quickActions: any[] = [];
+
+  if (!attendanceMarked) {
+    quickActions.push(B.button(':camera: Mark Attendance', 'sfa_mark_attendance', undefined, 'primary'));
+  }
+
+  quickActions.push(B.button(':mag: Past Visits', 'sfa_open_past_visits'));
+  quickActions.push(B.button(':new: Retailer Onboarding', 'sfa_open_onboarding'));
+
+  blocks.push(B.actions(...quickActions));
+  blocks.push(B.divider());
+
+  // ─── Active Visit Section ───
   if (activeVisit) {
     const name = storeName(activeVisit);
     const startTime = activeVisit.ActualStartTime__c;
@@ -43,6 +80,7 @@ export function buildRepHomeView(
     blocks.push(B.divider());
   }
 
+  // ─── Today's Plan ───
   const pendingToday = todayVisits.filter(v => v.Status__c !== 'Completed');
   const completedToday = todayVisits.filter(v => v.Status__c === 'Completed');
 
@@ -51,14 +89,25 @@ export function buildRepHomeView(
     for (const visit of pendingToday) {
       const name = storeName(visit);
       const timeStr = visit.Planned_Start_Time__c ? B.formatTime(visit.Planned_Start_Time__c) : '--:--';
-      const statusEmoji = visit.Status__c === 'In Progress' ? ':red_circle:' : ':black_circle:';
+      const isInProgress = visit.Status__c === 'In Progress';
 
-      blocks.push(B.section(
-        `${statusEmoji} *${timeStr}* | ${name}`,
-        visit.Status__c !== 'In Progress'
-          ? B.button('Start Visit', 'sfa_start_visit', visit.Id, 'primary')
-          : undefined
-      ));
+      const elements: any[] = [];
+      if (attendanceMarked && !isInProgress) {
+        if (!activeVisit) {
+          elements.push(B.button('Start Visit', 'sfa_start_visit', visit.Id, 'primary'));
+        } else {
+          elements.push(B.button(':lock:', 'sfa_noop', undefined));
+        }
+      }
+
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `${isInProgress ? ':red_circle:' : ':black_circle:'} *${timeStr}* | ${name}`,
+        },
+        ...(elements.length > 0 ? { accessory: elements[0] } : {}),
+      });
     }
     blocks.push(B.divider());
   }
@@ -74,7 +123,6 @@ export function buildRepHomeView(
   blocks.push(B.section(`:bar_chart: *This Week:* ${weeklyStats.completed}/${weeklyStats.total} visits completed`));
 
   blocks.push(B.actions(
-    B.button(':heavy_plus_sign: New Ad-hoc Visit', 'sfa_open_adhoc_visit', undefined, 'primary'),
     B.button(':arrows_counterclockwise: Refresh', 'sfa_refresh_home')
   ));
 

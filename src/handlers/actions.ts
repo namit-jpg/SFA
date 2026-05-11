@@ -5,6 +5,7 @@ import {
   searchStores,
   searchProducts,
   getRepsList,
+  getActiveVisit,
 } from '../salesforce/soql';
 import { buildStartVisitModal } from '../modals/startVisitModal';
 import { buildCreateOrderModal } from '../modals/createOrderModal';
@@ -26,19 +27,30 @@ export function registerActions(app: App) {
     await ack();
     try {
       const visitId = (body as any).actions[0].value;
-      const visit = await getVisitById(visitId);
+      const slackUserId = (body as any).user.id;
+      const userCtx = getCachedUser(slackUserId);
 
-      if (!visit) {
-        return;
-      }
+      const visit = await getVisitById(visitId);
+      if (!visit) return;
 
       if (visit.Status__c === 'In Progress') {
         await client.chat.postEphemeral({
-          user: (body as any).user.id,
-          channel: (body as any).channel?.id || (body as any).user.id,
+          user: slackUserId, channel: slackUserId,
           text: ':warning: This visit is already in progress.',
         });
         return;
+      }
+
+      // Block if another visit is active
+      if (userCtx) {
+        const active = await getActiveVisit(userCtx.sfUserId);
+        if (active && active.Id !== visitId) {
+          await client.chat.postEphemeral({
+            user: slackUserId, channel: slackUserId,
+            text: `:lock: Cannot start a new visit while *${active.Retail_Store_Custom__c ? 'another visit' : 'a visit'}* is in progress. End it first.`,
+          });
+          return;
+        }
       }
 
       const store = visit.Retail_Store_Custom__c ? await getStoreById(visit.Retail_Store_Custom__c) : null;
