@@ -288,17 +288,17 @@ export async function getVisitInsights(sfaUserId: string): Promise<{
   lastVisitDate: string | null; lastStore: string | null;
 }> {
   const [total, thisWeek, orderTotal, last] = await Promise.all([
-    queryOne<{ count: number }>(`SELECT COUNT(Id) count FROM ${SOBJECTS.VISIT} WHERE SFA_User__c = '${esc(sfaUserId)}' AND Status__c = 'Completed'`),
-    queryOne<{ count: number }>(`SELECT COUNT(Id) count FROM ${SOBJECTS.VISIT} WHERE SFA_User__c = '${esc(sfaUserId)}' AND Status__c = 'Completed' AND Visit_Date__c = THIS_WEEK`),
-    queryOne<{ sum: number }>(`SELECT SUM(Order_Value__c) sum FROM ${SOBJECTS.VISIT} WHERE SFA_User__c = '${esc(sfaUserId)}' AND Status__c = 'Completed'`),
+    query<any>(`SELECT COUNT(Id) FROM ${SOBJECTS.VISIT} WHERE SFA_User__c = '${esc(sfaUserId)}' AND Status__c = 'Completed'`),
+    query<any>(`SELECT COUNT(Id) FROM ${SOBJECTS.VISIT} WHERE SFA_User__c = '${esc(sfaUserId)}' AND Status__c = 'Completed' AND Visit_Date__c = THIS_WEEK`),
+    query<any>(`SELECT SUM(Order_Value__c) FROM ${SOBJECTS.VISIT} WHERE SFA_User__c = '${esc(sfaUserId)}' AND Status__c = 'Completed'`),
     queryOne<{ Visit_Date__c: string; Retail_Store_Custom__r: { Name: string } }>(
       `SELECT Visit_Date__c, Retail_Store_Custom__r.Name FROM ${SOBJECTS.VISIT} WHERE SFA_User__c = '${esc(sfaUserId)}' AND Status__c = 'Completed' ORDER BY Visit_Date__c DESC LIMIT 1`
     ),
   ]);
-  const n = total?.count || 0;
-  const v = orderTotal?.sum || 0;
+  const n = total?.[0]?.expr0 || 0;
+  const v = orderTotal?.[0]?.expr0 || 0;
   return {
-    totalVisits: n, thisWeekVisits: thisWeek?.count || 0,
+    totalVisits: n, thisWeekVisits: thisWeek?.[0]?.expr0 || 0,
     totalOrderValue: v, avgOrderValue: n > 0 ? Math.round(v / n) : 0,
     lastVisitDate: last?.Visit_Date__c || null, lastStore: last?.Retail_Store_Custom__r?.Name || null,
   };
@@ -309,7 +309,7 @@ export async function getTodayAttendance(sfaUserId: string, date: string): Promi
   return queryOne<any>(
     `SELECT Id, Check_In_Selfie__c FROM ${SOBJECTS.VISIT}
      WHERE SFA_User__c = '${esc(sfaUserId)}' AND Visit_Date__c = ${dateClause}
-     AND Status__c IN ('In Progress', 'Completed') AND Check_In_Selfie__c != null
+     AND Status__c IN ('In Progress', 'Completed')
      ORDER BY CreatedDate DESC LIMIT 1`
   );
 }
