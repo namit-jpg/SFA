@@ -2,7 +2,7 @@ import { VisitRecord, RetailStoreRecord } from '../salesforce/soql';
 import * as B from '../utils/blocks';
 
 export function buildEndVisitModal(visit: VisitRecord, store: RetailStoreRecord | null): any {
-  const name = store?.Name || 'Unknown';
+  const name = store?.Account__r?.Name || store?.Name || 'Unknown';
   const startTime = visit.ActualStartTime__c;
   const duration = startTime ? B.formatDuration(startTime, new Date().toISOString()) : 'N/A';
 

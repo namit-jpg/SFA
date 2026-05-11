@@ -25,7 +25,8 @@ export function buildRepHomeView(
 
   function storeName(visit: VisitRecord): string {
     const store = storeMap.get(visit.Retail_Store_Custom__c);
-    return store?.Name || 'N/A';
+    if (!store) return 'N/A';
+    return store.Account__r?.Name || store.Name;
   }
 
   blocks.push(B.header(`:wave: Hey ${sfaUserName}, welcome to SFA`));

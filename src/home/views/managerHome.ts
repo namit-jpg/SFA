@@ -12,7 +12,8 @@ export function buildManagerHomeView(
 
   function storeName(visit: any): string {
     const store = storeMap.get(visit.Retail_Store_Custom__c);
-    return store?.Name || 'Unknown';
+    if (!store) return 'Unknown';
+    return store.Account__r?.Name || store.Name;
   }
 
   blocks.push(B.header(`:office: Manager Dashboard \u2014 ${sfUserName}`));

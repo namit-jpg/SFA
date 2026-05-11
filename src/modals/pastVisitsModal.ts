@@ -41,7 +41,7 @@ export function buildPastVisitsResultsView(
 
   for (const visit of visits.slice(0, 20)) {
     const store = storeMap.get(visit.Retail_Store_Custom__c);
-    const storeName = store?.Name || 'Unknown';
+    const storeName = store?.Account__r?.Name || store?.Name || 'Unknown';
     const dateStr = B.formatDate(visit.Visit_Date__c || visit.PlannedDate__c);
 
     blocks.push({

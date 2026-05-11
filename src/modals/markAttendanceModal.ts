@@ -43,7 +43,7 @@ export function buildDailyVisitsView(
 
   for (const visit of visits) {
     const store = storeMap.get(visit.Retail_Store_Custom__c);
-    const storeName = store?.Name || 'Unknown';
+    const storeName = store?.Account__r?.Name || store?.Name || 'Unknown';
     const timeStr = visit.Planned_Start_Time__c ? B.formatTime(visit.Planned_Start_Time__c) : '--:--';
     const isActive = visit.Id === activeVisitId;
     const isPending = visit.Status__c !== 'Completed';

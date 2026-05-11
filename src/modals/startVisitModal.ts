@@ -2,7 +2,7 @@ import { VisitRecord, RetailStoreRecord } from '../salesforce/soql';
 import * as B from '../utils/blocks';
 
 export function buildStartVisitModal(visit: VisitRecord, store: RetailStoreRecord | null): any {
-  const name = store?.Name || 'Unknown Store';
+  const name = store?.Account__r?.Name || store?.Name || 'Unknown Store';
   const timeStr = visit.Planned_Start_Time__c
     ? B.formatTime(visit.Planned_Start_Time__c)
     : 'Flexible';

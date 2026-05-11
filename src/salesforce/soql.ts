@@ -17,6 +17,7 @@ export interface RetailStoreRecord {
   Name: string;
   Store_Code__c: string;
   Account__c: string;
+  Account__r?: { Name: string };
 }
 
 export interface VisitRecord {
@@ -134,7 +135,7 @@ export async function getBeatWithLineItems(beatId: string) {
 export async function searchStores(searchTerm: string): Promise<RetailStoreRecord[]> {
   const escaped = esc(searchTerm);
   return query<RetailStoreRecord>(
-    `SELECT Id, Name, Store_Code__c, Account__c
+    `SELECT Id, Name, Store_Code__c, Account__c, Account__r.Name
      FROM ${SOBJECTS.RETAIL_STORE}
      WHERE Name LIKE '%${escaped}%' OR Store_Code__c LIKE '%${escaped}%'
      ORDER BY Name ASC LIMIT 25`
@@ -143,7 +144,7 @@ export async function searchStores(searchTerm: string): Promise<RetailStoreRecor
 
 export async function getStoreById(storeId: string): Promise<RetailStoreRecord | null> {
   return queryOne<RetailStoreRecord>(
-    `SELECT Id, Name, Store_Code__c, Account__c
+    `SELECT Id, Name, Store_Code__c, Account__c, Account__r.Name
      FROM ${SOBJECTS.RETAIL_STORE}
      WHERE Id = '${esc(storeId)}' LIMIT 1`
   );
@@ -154,7 +155,7 @@ export async function getStoresByIds(storeIds: string[]): Promise<Map<string, Re
   if (uniqueIds.length === 0) return new Map();
   const idList = uniqueIds.map(id => `'${esc(id)}'`).join(',');
   const stores = await query<RetailStoreRecord>(
-    `SELECT Id, Name, Store_Code__c, Account__c
+    `SELECT Id, Name, Store_Code__c, Account__c, Account__r.Name
      FROM ${SOBJECTS.RETAIL_STORE}
      WHERE Id IN (${idList})`
   );
@@ -163,7 +164,7 @@ export async function getStoresByIds(storeIds: string[]): Promise<Map<string, Re
 
 export async function getAllStores(): Promise<RetailStoreRecord[]> {
   return query<RetailStoreRecord>(
-    `SELECT Id, Name, Store_Code__c, Account__c
+    `SELECT Id, Name, Store_Code__c, Account__c, Account__r.Name
      FROM ${SOBJECTS.RETAIL_STORE}
      ORDER BY Name ASC`
   );
