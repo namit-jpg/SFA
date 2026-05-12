@@ -37,6 +37,11 @@ export const SOBJECTS = {
   PRICEBOOK_ENTRY: 'PricebookEntry',
   ACCOUNT: 'Account',
   USER: 'User',
+  RETURN_ORDER: 'Return_Order__c',
+  CLAIM: 'Claim__c',
+  BULK_CLAIM: 'BulkClaim__c',
+  INVOICE_CUSTOM: 'Invoice__c',
+  INVENTORY: 'Inventory__c',
 };
 
 export const VISIT_STATUS = {

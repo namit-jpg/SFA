@@ -73,10 +73,16 @@ export function buildRepHomeView(
     });
 
     blocks.push(B.actions(
+      B.button(':bulb: Insights', 'sfa_visit_intel', activeVisit.Id),
       B.button(':shopping_trolley: Create Order', 'sfa_create_order', activeVisit.Id, 'primary'),
       B.button(':clipboard: Fill Survey', 'sfa_open_survey', activeVisit.Id),
-      B.button(':moneybag: Log Expense', 'sfa_open_expense', activeVisit.Id),
-      B.button(':white_check_mark: End Visit', 'sfa_end_visit', activeVisit.Id, 'danger')
+      B.button(':moneybag: Expense', 'sfa_open_expense', activeVisit.Id),
+    ));
+    blocks.push(B.actions(
+      B.button(':leftwards_arrow_with_hook: Return', 'sfa_open_return', activeVisit.Id),
+      B.button(':memo: Claim', 'sfa_open_claim', activeVisit.Id),
+      B.button(':receipt: Process Invoice', 'sfa_open_invoice'),
+      B.button(':white_check_mark: End Visit', 'sfa_end_visit', activeVisit.Id, 'danger'),
     ));
     blocks.push(B.divider());
   }

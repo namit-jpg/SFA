@@ -322,3 +322,60 @@ export async function insertPartnerRequest(data: Record<string, any>): Promise<s
 }
 
 export { esc, insertRecord };
+
+// ─── Visit Intelligence ───
+export async function getStoreVisitHistory(storeId: string, limit: number = 5): Promise<any[]> {
+  return query<any>(
+    `SELECT Id, Name, Visit_Date__c, Status__c, Order_Value__c, Visit_Outcome__c
+     FROM ${SOBJECTS.VISIT}
+     WHERE Retail_Store_Custom__c = '${esc(storeId)}' AND Status__c = 'Completed'
+     ORDER BY Visit_Date__c DESC LIMIT ${limit}`
+  );
+}
+
+export async function getStoreOrders(storeId: string, limit: number = 5): Promise<any[]> {
+  return query<any>(
+    `SELECT Id, OrderNumber, Status, TotalAmount, EffectiveDate
+     FROM Order
+     WHERE AccountId IN (SELECT Account__c FROM ${SOBJECTS.RETAIL_STORE} WHERE Id = '${esc(storeId)}')
+     AND Status != 'Cancelled'
+     ORDER BY EffectiveDate DESC LIMIT ${limit}`
+  );
+}
+
+export async function getFrequentlyBoughtProducts(accountId: string, limit: number = 5): Promise<any[]> {
+  return query<any>(
+    `SELECT Product2Id, Product2.Name, Product2.ProductCode, COUNT(Id) cnt, SUM(Quantity) totalQty
+     FROM OrderItem
+     WHERE OrderId IN (SELECT Id FROM Order WHERE AccountId = '${esc(accountId)}' AND Status != 'Cancelled')
+     GROUP BY Product2Id, Product2.Name, Product2.ProductCode
+     ORDER BY COUNT(Id) DESC LIMIT ${limit}`
+  );
+}
+
+// ─── Stock Check ───
+export async function getProductStock(productId: string): Promise<number> {
+  const r = await queryOne<any>(
+    `SELECT SUM(Quantity_Available__c) total FROM ${SOBJECTS.INVENTORY} WHERE Product__c = '${esc(productId)}' AND Is_Active__c = true`
+  );
+  return r?.total || 0;
+}
+
+// ─── Invoice Processing ───
+export async function getVisitOrdersForInvoice(visitId: string): Promise<any[]> {
+  return query<any>(
+    `SELECT Id, OrderNumber, Status, TotalAmount, AccountId
+     FROM Order
+     WHERE Id = (SELECT Order__c FROM ${SOBJECTS.VISIT} WHERE Id = '${esc(visitId)}')
+     AND Status = 'Draft'
+     LIMIT 1`
+  );
+}
+
+export async function getOrderItemsWithStock(orderId: string): Promise<any[]> {
+  return query<any>(
+    `SELECT Id, Product2Id, Product2.Name, Product2.ProductCode, Quantity, UnitPrice, TotalPrice
+     FROM OrderItem
+     WHERE OrderId = '${esc(orderId)}'`
+  );
+}

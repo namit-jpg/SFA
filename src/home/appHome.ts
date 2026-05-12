@@ -1,15 +1,21 @@
 import { App } from '@slack/bolt';
 import {
   getSFUserByEmail, getSFAUserByEmail, getSFAUserByUserId, getManagerStatus,
-  getDailyVisits, getActiveVisit, getTeamVisits, getStoresByIds,
+  getDailyVisits, getActiveVisit, getTeamVisits, getStoresByIds, getStoreById,
   getVisitInsights, getPastVisits, getTodayAttendance, getStoreWithLocation,
-  VisitRecord, RetailStoreRecord,
+  getStoreVisitHistory, getStoreOrders, getFrequentlyBoughtProducts,
+  getProductStock, getVisitOrdersForInvoice, getOrderItemsWithStock,
+  VisitRecord, RetailStoreRecord, getVisitById,
 } from '../salesforce/soql';
+import { SOBJECTS } from '../config';
 import { buildRepHomeView, VisitInsights } from './views/repHome';
 import { buildManagerHomeView } from './views/managerHome';
 import { buildMarkAttendanceModal, buildDailyVisitsView } from '../modals/markAttendanceModal';
 import { buildPastVisitsModal, buildPastVisitsResultsView } from '../modals/pastVisitsModal';
 import { buildOnboardingStep1Modal, buildOnboardingStep2Modal, buildOnboardingStep3Modal } from '../modals/retailerOnboardingModal';
+import { buildVisitIntelModal } from '../modals/visitIntelModal';
+import { buildReturnModal, buildClaimModal } from '../modals/returnsClaimsModal';
+import { buildProcessInvoiceModal } from '../modals/invoiceModal';
 import * as B from '../utils/blocks';
 
 const sfUserCache = new Map<string, { sfUserId: string; sfaUser: any; sfUserRecordId: string; isManager: boolean; slackUserId: string }>();
@@ -252,4 +258,190 @@ export function registerAppHome(app: App) {
     // Always publish attendance view regardless of errors
     await publishAttendanceView(app, slackUserId, client);
   });
+
+  // ─── Visit Intelligence ───
+  app.action('sfa_visit_intel', async ({ ack, body, client }) => {
+    await ack();
+    try {
+      const visitId = (body as any).actions[0].value;
+      const visit = await getVisitById(visitId);
+      if (!visit) return;
+      const store = await getStoreById(visit.Retail_Store_Custom__c);
+      const storeName = store?.Account__r?.Name || store?.Name || 'Unknown';
+
+      const [history, orders] = await Promise.all([
+        getStoreVisitHistory(visit.Retail_Store_Custom__c),
+        getStoreOrders(visit.Retail_Store_Custom__c),
+      ]);
+      const topProducts = visit.AccountId__c ? await getFrequentlyBoughtProducts(visit.AccountId__c) : [];
+
+      const modal = buildVisitIntelModal(history, orders, topProducts, storeName);
+      await client.views.open({ trigger_id: (body as any).trigger_id, view: modal });
+    } catch (err: any) { console.error(err); }
+  });
+
+  // ─── Return ───
+  app.action('sfa_open_return', async ({ ack, body, client }) => {
+    await ack();
+    try {
+      const visitId = (body as any).actions[0].value;
+      const modal = buildReturnModal(visitId);
+      await client.views.open({ trigger_id: (body as any).trigger_id, view: modal });
+    } catch (err: any) { console.error(err); }
+  });
+
+  // ─── Claim ───
+  app.action('sfa_open_claim', async ({ ack, body, client }) => {
+    await ack();
+    try {
+      const visitId = (body as any).actions[0].value;
+      const modal = buildClaimModal(visitId);
+      await client.views.open({ trigger_id: (body as any).trigger_id, view: modal });
+    } catch (err: any) { console.error(err); }
+  });
+
+  // ─── Process Invoice ───
+  app.action('sfa_open_invoice', async ({ ack, body, client }) => {
+    await ack();
+    try {
+      const modal = buildProcessInvoiceModal();
+      await client.views.open({ trigger_id: (body as any).trigger_id, view: modal });
+    } catch (err: any) { console.error(err); }
+  });
+
+  // ─── Process Invoice Submit ───
+  app.view('sfa_bulk_invoice_submit', async ({ ack, view, body, client }) => {
+    try {
+      const slackUserId = (body as any).user.id;
+      const userCtx = getCachedUser(slackUserId);
+      const values = view.state.values;
+      let orderId = values.invoice_visit?.invoice_visit?.value || '';
+
+      // If no order number provided, get from active visit
+      if (!orderId && userCtx) {
+        const activeVisit = await getActiveVisit(userCtx.sfUserId);
+        if (activeVisit?.Order__c) orderId = activeVisit.Order__c;
+      }
+      if (!orderId) {
+        await ack({ response_action: 'errors', errors: { error: 'No order found. Create an order first.' } });
+        return;
+      }
+
+      const items = await getOrderItemsWithStock(orderId);
+      if (items.length === 0) {
+        await ack({ response_action: 'errors', errors: { error: 'No line items found in this order.' } });
+        return;
+      }
+
+      let hasStock = false;
+      let allStock = true;
+      const stockResults: string[] = [];
+
+      for (const item of items) {
+        const stock = await getProductStock(item.Product2Id);
+        if (stock >= item.Quantity) {
+          hasStock = true;
+          stockResults.push(`:white_check_mark: ${item.Product2?.Name || 'Unknown'} — ${stock} available (needs ${item.Quantity})`);
+        } else if (stock > 0) {
+          hasStock = true;
+          allStock = false;
+          stockResults.push(`:warning: ${item.Product2?.Name || 'Unknown'} — only ${stock}/${item.Quantity} available (PARTIAL)`);
+        } else {
+          allStock = false;
+          stockResults.push(`:x: ${item.Product2?.Name || 'Unknown'} — OUT OF STOCK`);
+        }
+      }
+
+      if (!hasStock) {
+        await ack({ response_action: 'errors', errors: { error: 'No stock available for any product. Invoice blocked.' } });
+        return;
+      }
+
+      // Create invoice
+      const { insertRecord: insertRec } = await import('../salesforce/connection');
+      const status = allStock ? 'Full' : 'Partial';
+      const totalAmt = items.reduce((s: number, i: any) => s + (i.UnitPrice || 0) * i.Quantity, 0);
+      await insertRec(SOBJECTS.INVOICE_CUSTOM, {
+        Order__c: orderId,
+        Invoice_Amount__c: totalAmt,
+        Invoice_Date__c: B.todayDateString(),
+        Full_Partial__c: status,
+        Status__c: 'Generated',
+      });
+
+      const statusText = status === 'Full' ? ':white_check_mark: Fully Invoiced' : ':warning: Partially Invoiced';
+      const stockMsg = stockResults.join('\n');
+      await client.chat.postMessage({
+        channel: slackUserId,
+        text: `:receipt: *Invoice Generated (${status})*\nOrder: ${orderId}\nAmount: ₹${totalAmt}\n\n*Stock Check:*\n${stockMsg}`,
+      });
+
+      await ack({ response_action: 'clear' });
+    } catch (err: any) {
+      console.error('[Invoice]', err);
+      await ack({ response_action: 'errors', errors: { error: `Error: ${err.message}` } });
+    }
+  });
+
+  // ─── Return Submit ───
+  app.view('sfa_return_submit', async ({ ack, view, body, client }) => {
+    try {
+      const visitId = view.private_metadata;
+      const values = view.state.values;
+      const slackUserId = (body as any).user.id;
+      const userCtx = getCachedUser(slackUserId);
+      const { insertRecord: insertRec } = await import('../salesforce/connection');
+
+      const visit = await getVisitById(visitId);
+      if (!visit) { await ack({ response_action: 'errors', errors: { error: 'Visit not found.' } }); return; }
+
+      const returnType = values.return_type?.return_type?.selected_option?.value || 'Other';
+      const description = values.return_desc?.return_desc?.value || '';
+
+      const retId = await insertRec(SOBJECTS.RETURN_ORDER, {
+        Account__c: visit.AccountId__c,
+        Order__c: visit.Order__c,
+        Status__c: 'New',
+        Type__c: returnType,
+        Description__c: description,
+      });
+
+      await ack({ response_action: 'clear' });
+      await client.chat.postMessage({
+        channel: slackUserId,
+        text: `:white_check_mark: Return #${retId} created (${returnType}).`,
+      });
+    } catch (err: any) {
+      await ack({ response_action: 'errors', errors: { error: `${err.message}` } });
+    }
+  });
+
+  // ─── Claim Submit ───
+  app.view('sfa_claim_submit', async ({ ack, view, body, client }) => {
+    try {
+      const visitId = view.private_metadata;
+      const values = view.state.values;
+      const slackUserId = (body as any).user.id;
+      const { insertRecord: insertRec } = await import('../salesforce/connection');
+
+      const claimType = values.claim_type?.claim_type?.selected_option?.value || 'Other';
+      const amount = parseFloat(values.claim_amount?.claim_amount?.value || '0');
+      const description = values.claim_desc?.claim_desc?.value || '';
+
+      const claimId = await insertRec(SOBJECTS.CLAIM, {
+        Description__c: `${claimType}: ${description}`,
+      });
+
+      await ack({ response_action: 'clear' });
+      await client.chat.postMessage({
+        channel: slackUserId,
+        text: `:white_check_mark: Claim #${claimId} filed (${claimType}) for ₹${amount}.`,
+      });
+    } catch (err: any) {
+      await ack({ response_action: 'errors', errors: { error: `${err.message}` } });
+    }
+  });
+
+  // ─── Noop Modal (visit intel close) ───
+  app.view('sfa_noop_modal', async ({ ack }) => { await ack({ response_action: 'clear' }); });
 }
