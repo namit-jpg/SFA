@@ -95,13 +95,18 @@ async function publishAttendanceView(app: App, slackUserId: string, client: any)
   const storeIds = await collectStoreIds(activeVisit, ...dailyVisits);
   const storeMap = await getStoresByIds(storeIds);
 
-  // Fetch location data for stores
-  for (const [sid, store] of storeMap) {
-    const locStore = await getStoreWithLocation(sid);
-    if (locStore?.Location__c) {
-      (store as any).Location__c = locStore.Location__c;
+  // Fetch location data for stores - don't break on failure
+  try {
+    for (const [sid] of storeMap) {
+      const locStore = await getStoreWithLocation(sid);
+      if (locStore?.Location__c) {
+        const store = storeMap.get(sid) as any;
+        store._hasLocation = true;
+        store._lat = locStore.Location__r?.Location__Latitude__s;
+        store._lng = locStore.Location__r?.Location__Longitude__s;
+      }
     }
-  }
+  } catch {} // swallow location errors
 
   pageState.set(slackUserId, 'attendance');
   const view = buildDailyVisitsView(dailyVisits, storeMap, activeVisit?.Id || null, true);
@@ -220,29 +225,31 @@ export function registerAppHome(app: App) {
 
   // Mark Attendance Submit
   app.view('sfa_attendance_submit', async ({ ack, view, body, client }) => {
+    const slackUserId = (body as any).user.id;
+    await ack({ response_action: 'clear' });
     try {
       const values = view.state.values;
       const files = values.attendance_selfie?.attendance_selfie?.files;
-      const slackUserId = (body as any).user.id;
       const userCtx = getCachedUser(slackUserId);
-      if (!userCtx) { await ack({ response_action: 'errors', errors: { error: 'Session expired.' } }); return; }
-
       const today = B.todayDateString();
-      const todayVisits = await getDailyVisits(userCtx.sfUserId, today);
 
-      // Update first pending visit with selfie
-      const pendingVisit = todayVisits.find(v => v.Status__c === 'Planned');
-      if (pendingVisit) {
-        const { updateRecord } = require('../salesforce/connection');
-        const fileUrls = files ? files.map((f: any) => f.url_private).join('\n') : '';
-        await updateRecord('Visit__c', pendingVisit.Id, { Check_In_Selfie__c: fileUrls || 'Uploaded' });
+      if (userCtx) {
+        const todayVisits = await getDailyVisits(userCtx.sfUserId, today);
+        const pendingVisit = todayVisits.find(v => v.Status__c === 'Planned');
+        if (pendingVisit && files && files.length > 0) {
+          try {
+            const { updateRecord } = await import('../salesforce/connection');
+            const url = files.map((f: any) => f.url_private || f.permalink_public).join('\n');
+            await updateRecord('Visit__c', pendingVisit.Id, { Check_In_Selfie__c: url || 'Uploaded' });
+          } catch (e: any) {
+            console.error('[Attendance] Selfie update failed:', e.message);
+          }
+        }
       }
-
-      await ack({ response_action: 'clear' });
-      await publishAttendanceView(app, slackUserId, client);
     } catch (err: any) {
-      console.error('[Attendance]', err);
-      await ack({ response_action: 'errors', errors: { error: `Error: ${err.message}` } });
+      console.error('[Attendance] Error:', err.message);
     }
+    // Always publish attendance view regardless of errors
+    await publishAttendanceView(app, slackUserId, client);
   });
 }

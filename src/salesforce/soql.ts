@@ -261,11 +261,13 @@ export async function getVisitOrdersCustom(visitId: string): Promise<any[]> {
 }
 
 export async function getStoreWithLocation(storeId: string): Promise<any | null> {
-  return queryOne<any>(
-    `SELECT Id, Name, Location__c, Location__r.Name, Location__r.Location__Latitude__s, Location__r.Location__Longitude__s
-     FROM ${SOBJECTS.RETAIL_STORE}
-     WHERE Id = '${esc(storeId)}' LIMIT 1`
-  );
+  try {
+    return await queryOne<any>(
+      `SELECT Id, Name, Location__c, Location__r.Name, Location__r.Location__Latitude__s, Location__r.Location__Longitude__s
+       FROM ${SOBJECTS.RETAIL_STORE}
+       WHERE Id = '${esc(storeId)}' LIMIT 1`
+    );
+  } catch { return null; }
 }
 
 export async function getPastVisits(sfaUserId: string, search?: string, limit: number = 50): Promise<VisitRecord[]> {
