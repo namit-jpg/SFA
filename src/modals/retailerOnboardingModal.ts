@@ -27,51 +27,53 @@ export function buildOnboardingStep1Modal(): any {
   };
 }
 
-export function buildOnboardingStep2Modal(): any {
+export function buildOnboardingStep2Modal(existingData?: string): any {
+  const blocks: any[] = [
+    B.header(':house: Step 2/3 — Store Details'),
+    B.divider(),
+    B.textInput('onb_street', 'Street Address', '123 Main St'),
+    B.textInput('onb_city', 'City', 'Mumbai'),
+    B.textInput('onb_state', 'State', 'Maharashtra'),
+    B.textInput('onb_postal', 'Postal Code', '400001'),
+    B.textInput('onb_country', 'Country', 'India'),
+    B.textInput('onb_store_area', 'Store Area (sq ft)', 'e.g. 500', true),
+    B.staticSelect('onb_store_type', 'Store Type', [
+      B.option('Standalone', 'Standalone'), B.option('Mall', 'Mall'),
+      B.option('Market', 'Market'), B.option('Other', 'Other'),
+    ], 'Select store type', true),
+    B.divider(),
+    B.textInput('onb_opening_date', 'Expected Opening Date (YYYY-MM-DD)', '2026-06-01', true),
+  ];
   return {
-    type: 'modal',
-    callback_id: 'sfa_onboarding_step2_submit',
+    type: 'modal', callback_id: 'sfa_onboarding_step2_submit',
     title: { type: 'plain_text', text: 'Retailer Onboarding' },
     submit: { type: 'plain_text', text: 'Next' },
     close: { type: 'plain_text', text: 'Cancel' },
-    blocks: [
-      B.header(':house: Step 2/3 — Store Details'),
-      B.divider(),
-      B.textInput('onb_street', 'Street Address', '123 Main St'),
-      B.textInput('onb_city', 'City', 'Mumbai'),
-      B.textInput('onb_state', 'State', 'Maharashtra'),
-      B.textInput('onb_postal', 'Postal Code', '400001'),
-      B.textInput('onb_country', 'Country', 'India'),
-      B.textInput('onb_store_area', 'Store Area (sq ft)', 'e.g. 500', true),
-      B.staticSelect('onb_store_type', 'Store Type', [
-        B.option('Standalone', 'Standalone'), B.option('Mall', 'Mall'),
-        B.option('Market', 'Market'), B.option('Other', 'Other'),
-      ], 'Select store type', true),
-      B.divider(),
-      B.textInput('onb_opening_date', 'Expected Opening Date (YYYY-MM-DD)', '2026-06-01', true),
-    ],
+    private_metadata: existingData || '{}',
+    blocks,
   };
 }
 
-export function buildOnboardingStep3Modal(): any {
+export function buildOnboardingStep3Modal(existingData?: string): any {
+  const blocks: any[] = [
+    B.header(':page_facing_up: Step 3/3 — Documents & Banking'),
+    B.divider(),
+    B.textInput('onb_pan', 'PAN Card Number', 'ABCDE1234F'),
+    B.textInput('onb_gst', 'GST Number', '22AAAAA0000A1Z5'),
+    B.textInput('onb_aadhar', 'Aadhar Number', '123456789012', true),
+    B.divider(),
+    B.textInput('onb_bank_name', 'Bank Name', 'State Bank of India'),
+    B.textInput('onb_bank_ac', 'Bank Account Number', '12345678901'),
+    B.textInput('onb_ifsc', 'IFSC Code', 'SBIN0001234'),
+    B.divider(),
+    B.context(':information_source: All documents will be verified by the finance team.'),
+  ];
   return {
-    type: 'modal',
-    callback_id: 'sfa_onboarding_step3_submit',
+    type: 'modal', callback_id: 'sfa_onboarding_step3_submit',
     title: { type: 'plain_text', text: 'Retailer Onboarding' },
     submit: { type: 'plain_text', text: 'Submit' },
     close: { type: 'plain_text', text: 'Cancel' },
-    blocks: [
-      B.header(':page_facing_up: Step 3/3 — Documents & Banking'),
-      B.divider(),
-      B.textInput('onb_pan', 'PAN Card Number', 'ABCDE1234F'),
-      B.textInput('onb_gst', 'GST Number', '22AAAAA0000A1Z5'),
-      B.textInput('onb_aadhar', 'Aadhar Number', '123456789012', true),
-      B.divider(),
-      B.textInput('onb_bank_name', 'Bank Name', 'State Bank of India'),
-      B.textInput('onb_bank_ac', 'Bank Account Number', '12345678901'),
-      B.textInput('onb_ifsc', 'IFSC Code', 'SBIN0001234'),
-      B.divider(),
-      B.context(':information_source: All documents will be verified by the finance team.'),
-    ],
+    private_metadata: existingData || '{}',
+    blocks,
   };
 }

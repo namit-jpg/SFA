@@ -20,7 +20,19 @@ import * as B from '../utils/blocks';
 
 const sfUserCache = new Map<string, { sfUserId: string; sfaUser: any; sfUserRecordId: string; isManager: boolean; slackUserId: string }>();
 const pageState = new Map<string, string>();
-const onboardingData = new Map<string, Record<string, any>>();
+
+function parseViewState(values: any): Record<string, any> {
+  const data: Record<string, any> = {};
+  for (const [key, block] of Object.entries(values)) {
+    const el = (block as any)[key];
+    if (el?.value !== undefined && el.value !== null && el.value !== '') {
+      data[key] = el.value;
+    } else if (el?.selected_option?.value) {
+      data[key] = el.selected_option.value;
+    }
+  }
+  return data;
+}
 
 export async function resolveUser(slackUserId: string, client: any): Promise<{
   sfUserId: string; sfaUser: any; sfUserRecordId: string; isManager: boolean;
@@ -149,51 +161,31 @@ export function registerAppHome(app: App) {
   app.action('sfa_open_onboarding', async ({ ack, body, client }) => {
     await ack();
     try {
-      const slackUserId = (body as any).user.id;
-      onboardingData.delete(slackUserId); // fresh start
       const modal = buildOnboardingStep1Modal();
       await client.views.open({ trigger_id: (body as any).trigger_id, view: modal });
     } catch (err: any) { console.error(err); }
   });
 
   // Onboarding Step 1 → Step 2
-  app.view('sfa_onboarding_step1_submit', async ({ ack, view, body, client }) => {
-    const slackUserId = (body as any).user.id;
-    const vals = view.state.values;
-    const data: Record<string, any> = {};
-    for (const [key, block] of Object.entries(vals)) {
-      const el = (block as any)[key];
-      if (el?.value !== undefined && el.value !== null) data[key] = el.value;
-      else if (el?.selected_option?.value) data[key] = el.selected_option.value;
-    }
-    onboardingData.set(slackUserId, data);
-    await ack({ response_action: 'update', view: buildOnboardingStep2Modal() });
+  app.view('sfa_onboarding_step1_submit', async ({ ack, view }) => {
+    const data = parseViewState(view.state.values);
+    await ack({ response_action: 'update', view: buildOnboardingStep2Modal(JSON.stringify(data)) });
   });
 
   // Onboarding Step 2 → Step 3
-  app.view('sfa_onboarding_step2_submit', async ({ ack, view, body, client }) => {
-    const slackUserId = (body as any).user.id;
-    const vals = view.state.values;
-    const existing = onboardingData.get(slackUserId) || {};
-    for (const [key, block] of Object.entries(vals)) {
-      const el = (block as any)[key];
-      if (el?.value !== undefined && el.value !== null) existing[key] = el.value;
-      else if (el?.selected_option?.value) existing[key] = el.selected_option.value;
-    }
-    onboardingData.set(slackUserId, existing);
-    await ack({ response_action: 'update', view: buildOnboardingStep3Modal() });
+  app.view('sfa_onboarding_step2_submit', async ({ ack, view }) => {
+    const prev = JSON.parse(view.private_metadata || '{}');
+    const curr = parseViewState(view.state.values);
+    const merged = { ...prev, ...curr };
+    await ack({ response_action: 'update', view: buildOnboardingStep3Modal(JSON.stringify(merged)) });
   });
 
   // Onboarding Step 3 — Final Submit
   app.view('sfa_onboarding_step3_submit', async ({ ack, view, body, client }) => {
     const slackUserId = (body as any).user.id;
-    const vals = view.state.values;
-    const data = onboardingData.get(slackUserId) || {};
-    for (const [key, block] of Object.entries(vals)) {
-      const el = (block as any)[key];
-      if (el?.value !== undefined && el.value !== null) data[key] = el.value;
-      else if (el?.selected_option?.value) data[key] = el.selected_option.value;
-    }
+    const prev = JSON.parse(view.private_metadata || '{}');
+    const curr = parseViewState(view.state.values);
+    const data = { ...prev, ...curr };
 
     try {
       const { insertRecord } = await import('../salesforce/connection');
@@ -224,7 +216,6 @@ export function registerAppHome(app: App) {
         Onboarding_Stage__c: 'Submitted',
         Status__c: 'New',
       });
-      onboardingData.delete(slackUserId);
       await ack({ response_action: 'clear' });
       clearUserCache(slackUserId);
       await publishHomeView(app, slackUserId, client);
