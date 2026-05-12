@@ -7,7 +7,6 @@ import {
   getStandardPricebookId,
   getPriceForProduct,
   getStoreById,
-  insertPartnerRequest,
 } from '../salesforce/soql';
 import { getCachedUser, clearUserCache, publishHomeView } from '../home/appHome';
 import { SOBJECTS, VISIT_STATUS, VISIT_TYPE } from '../config';
@@ -442,51 +441,6 @@ export function registerViewSubmissions(app: App) {
       await publishHomeView(self, slackUserId, client);
     } catch (err: any) {
       console.error('[Submit] beat_plan error:', err);
-      await ack({ response_action: 'errors', errors: { error: `Failed: ${err.message}` } });
-    }
-  });
-
-  // ─── Onboarding Step 3 Submit ───
-  app.view('sfa_onboarding_step3_submit', async ({ ack, view, body, client }) => {
-    try {
-      const values = view.state.values;
-      const slackUserId = (body as any).user.id;
-      const userCtx = getCachedUser(slackUserId);
-      if (!userCtx) { await ack({ response_action: 'errors', errors: { error: 'Session expired.' } }); return; }
-
-      const data: Record<string, any> = {
-        First_Name__c: values.onb_first_name?.onb_first_name?.value || '',
-        Last_Name__c: values.onb_last_name?.onb_last_name?.value || '',
-        Enterprise_Name__c: values.onb_enterprise?.onb_enterprise?.value || '',
-        Company_Name__c: values.onb_enterprise?.onb_enterprise?.value || '',
-        Phone__c: values.onb_phone?.onb_phone?.value || '',
-        Email__c: values.onb_email?.onb_email?.value || '',
-        Company_Website__c: values.onb_website?.onb_website?.value || null,
-        Business_Type__c: values.onb_biz_type?.onb_biz_type?.selected_option?.value || 'Retail',
-        Street__c: values.onb_street?.onb_street?.value || '',
-        City__c: values.onb_city?.onb_city?.value || '',
-        State__c: values.onb_state?.onb_state?.value || '',
-        Postal_Code__c: values.onb_postal?.onb_postal?.value || '',
-        Country__c: values.onb_country?.onb_country?.value || '',
-        Store_Footage_in_sqft__c: parseFloat(values.onb_store_area?.onb_store_area?.value || '0') || null,
-        Store_Type__c: values.onb_store_type?.onb_store_type?.selected_option?.value || null,
-        Expected_Opening_date__c: values.onb_opening_date?.onb_opening_date?.value || null,
-        PAN_Card_Numer__c: values.onb_pan?.onb_pan?.value || '',
-        GST_Number__c: values.onb_gst?.onb_gst?.value || '',
-        Aadhar_Number__c: values.onb_aadhar?.onb_aadhar?.value || null,
-        Bank_Name__c: values.onb_bank_name?.onb_bank_name?.value || '',
-        Bank_Account_Number__c: values.onb_bank_ac?.onb_bank_ac?.value || '',
-        IFSC_Code__c: values.onb_ifsc?.onb_ifsc?.value || '',
-        Onboarding_Stage__c: 'Submitted',
-        Status__c: 'New',
-      };
-
-      await insertPartnerRequest(data);
-      await ack({ response_action: 'clear' });
-      clearUserCache(slackUserId);
-      await publishHomeView(self, slackUserId, client);
-    } catch (err: any) {
-      console.error('[Submit] onboarding error:', err);
       await ack({ response_action: 'errors', errors: { error: `Failed: ${err.message}` } });
     }
   });

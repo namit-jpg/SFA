@@ -2,7 +2,7 @@ import { App } from '@slack/bolt';
 import {
   getSFUserByEmail, getSFAUserByEmail, getSFAUserByUserId, getManagerStatus,
   getDailyVisits, getActiveVisit, getTeamVisits, getStoresByIds, getStoreById,
-  getVisitInsights, getPastVisits, getTodayAttendance, getStoreWithLocation,
+  getVisitInsights, getTodayAttendance, getStoreWithLocation,
   getStoreVisitHistory, getStoreOrders, getFrequentlyBoughtProducts,
   getProductStock, getVisitOrdersForInvoice, getOrderItemsWithStock,
   VisitRecord, RetailStoreRecord, getVisitById,
@@ -11,7 +11,7 @@ import { SOBJECTS } from '../config';
 import { buildRepHomeView, VisitInsights } from './views/repHome';
 import { buildManagerHomeView } from './views/managerHome';
 import { buildMarkAttendanceModal, buildDailyVisitsView } from '../modals/markAttendanceModal';
-import { buildPastVisitsModal, buildPastVisitsResultsView } from '../modals/pastVisitsModal';
+import { buildPastVisitsListView, buildPastOrdersListView } from '../modals/pastVisitsModal';
 import { buildOnboardingStep1Modal, buildOnboardingStep2Modal, buildOnboardingStep3Modal } from '../modals/retailerOnboardingModal';
 import { buildVisitIntelModal } from '../modals/visitIntelModal';
 import { buildReturnModal, buildClaimModal } from '../modals/returnsClaimsModal';
@@ -20,6 +20,7 @@ import * as B from '../utils/blocks';
 
 const sfUserCache = new Map<string, { sfUserId: string; sfaUser: any; sfUserRecordId: string; isManager: boolean; slackUserId: string }>();
 const pageState = new Map<string, string>();
+const onboardingData = new Map<string, Record<string, any>>();
 
 export async function resolveUser(slackUserId: string, client: any): Promise<{
   sfUserId: string; sfaUser: any; sfUserRecordId: string; isManager: boolean;
@@ -144,22 +145,93 @@ export function registerAppHome(app: App) {
     } catch (err: any) { console.error(err); }
   });
 
-  // Past Visits
-  app.action('sfa_open_past_visits', async ({ ack, body, client }) => {
+  // Past Visits (per-store, accessed from active visit)
+  app.action('sfa_open_onboarding', async ({ ack, body, client }) => {
     await ack();
     try {
-      const modal = buildPastVisitsModal();
+      const slackUserId = (body as any).user.id;
+      onboardingData.delete(slackUserId); // fresh start
+      const modal = buildOnboardingStep1Modal();
       await client.views.open({ trigger_id: (body as any).trigger_id, view: modal });
     } catch (err: any) { console.error(err); }
   });
 
-  // Retailer Onboarding
-  app.action('sfa_open_onboarding', async ({ ack, body, client }) => {
-    await ack();
+  // Onboarding Step 1 → Step 2
+  app.view('sfa_onboarding_step1_submit', async ({ ack, view, body, client }) => {
+    const slackUserId = (body as any).user.id;
+    const vals = view.state.values;
+    const data: Record<string, any> = {};
+    for (const [key, block] of Object.entries(vals)) {
+      const el = (block as any)[key];
+      if (el?.value !== undefined && el.value !== null) data[key] = el.value;
+      else if (el?.selected_option?.value) data[key] = el.selected_option.value;
+    }
+    onboardingData.set(slackUserId, data);
+    await ack({ response_action: 'update', view: buildOnboardingStep2Modal() });
+  });
+
+  // Onboarding Step 2 → Step 3
+  app.view('sfa_onboarding_step2_submit', async ({ ack, view, body, client }) => {
+    const slackUserId = (body as any).user.id;
+    const vals = view.state.values;
+    const existing = onboardingData.get(slackUserId) || {};
+    for (const [key, block] of Object.entries(vals)) {
+      const el = (block as any)[key];
+      if (el?.value !== undefined && el.value !== null) existing[key] = el.value;
+      else if (el?.selected_option?.value) existing[key] = el.selected_option.value;
+    }
+    onboardingData.set(slackUserId, existing);
+    await ack({ response_action: 'update', view: buildOnboardingStep3Modal() });
+  });
+
+  // Onboarding Step 3 — Final Submit
+  app.view('sfa_onboarding_step3_submit', async ({ ack, view, body, client }) => {
+    const slackUserId = (body as any).user.id;
+    const vals = view.state.values;
+    const data = onboardingData.get(slackUserId) || {};
+    for (const [key, block] of Object.entries(vals)) {
+      const el = (block as any)[key];
+      if (el?.value !== undefined && el.value !== null) data[key] = el.value;
+      else if (el?.selected_option?.value) data[key] = el.selected_option.value;
+    }
+
     try {
-      const modal = buildOnboardingStep1Modal();
-      await client.views.open({ trigger_id: (body as any).trigger_id, view: modal });
-    } catch (err: any) { console.error(err); }
+      const { insertRecord } = await import('../salesforce/connection');
+      await insertRecord(SOBJECTS.PARTNER_REQUEST, {
+        First_Name__c: data.onb_first_name || '',
+        Last_Name__c: data.onb_last_name || '',
+        Enterprise_Name__c: data.onb_enterprise || '',
+        Company_Name__c: data.onb_enterprise || '',
+        Phone__c: data.onb_phone || '',
+        Email__c: data.onb_email || '',
+        Company_Website__c: data.onb_website || null,
+        Year_Established__c: parseInt(data.onb_year_est || '0') || null,
+        Business_Type__c: data.onb_biz_type || 'Retail',
+        Street__c: data.onb_street || '',
+        City__c: data.onb_city || '',
+        State__c: data.onb_state || '',
+        Postal_Code__c: data.onb_postal || '',
+        Country__c: data.onb_country || 'India',
+        Store_Footage_in_sqft__c: parseFloat(data.onb_store_area || '0') || null,
+        Store_Type__c: data.onb_store_type || null,
+        Expected_Opening_date__c: data.onb_opening_date || null,
+        PAN_Card_Numer__c: data.onb_pan || '',
+        GST_Number__c: data.onb_gst || '',
+        Aadhar_Number__c: data.onb_aadhar || null,
+        Bank_Name__c: data.onb_bank_name || '',
+        Bank_Account_Number__c: data.onb_bank_ac || '',
+        IFSC_Code__c: data.onb_ifsc || '',
+        Onboarding_Stage__c: 'Submitted',
+        Status__c: 'New',
+      });
+      onboardingData.delete(slackUserId);
+      await ack({ response_action: 'clear' });
+      clearUserCache(slackUserId);
+      await publishHomeView(app, slackUserId, client);
+    } catch (err: any) {
+      console.error('[Submit] onboarding error:', err);
+      await ack({ response_action: 'errors', errors: { error: `Failed: ${err.message}` } });
+    }
   });
 
   // Google Maps
@@ -192,25 +264,36 @@ export function registerAppHome(app: App) {
     } catch (err: any) { console.error(err); }
   });
 
-  // Past Visits Search Submit
-  app.view('sfa_past_visits_search', async ({ ack, view, body, client }) => {
+  // ─── Per-Store Past Visits (list view) ───
+  app.action('sfa_past_visits_store', async ({ ack, body, client }) => {
+    await ack();
     try {
-      const slackUserId = (body as any).user.id;
-      const userCtx = getCachedUser(slackUserId);
-      if (!userCtx) { await ack({ response_action: 'errors', errors: { error: 'Session expired.' } }); return; }
+      const visitId = (body as any).actions[0].value;
+      const visit = await getVisitById(visitId);
+      if (!visit) return;
+      const store = await getStoreById(visit.Retail_Store_Custom__c);
+      const storeName = store?.Account__r?.Name || store?.Name || 'Unknown';
+      const history = await getStoreVisitHistory(visit.Retail_Store_Custom__c, 15);
+      const storeMap = new Map();
+      if (store) storeMap.set(store.Id, store);
+      const modal = buildPastVisitsListView(history, storeMap, storeName);
+      await client.views.open({ trigger_id: (body as any).trigger_id, view: modal });
+    } catch (err: any) { console.error(err); }
+  });
 
-      const searchQuery = view.state.values.past_search?.past_search?.value || '';
-      const visits = await getPastVisits(userCtx.sfUserId, searchQuery);
-      const storeIds = visits.map(v => v.Retail_Store_Custom__c).filter(Boolean);
-      const storeMap = await getStoresByIds(storeIds);
-
-      await ack({
-        response_action: 'update',
-        view: buildPastVisitsResultsView(visits, storeMap, searchQuery),
-      });
-    } catch (err: any) {
-      await ack({ response_action: 'errors', errors: { error: `Error: ${err.message}` } });
-    }
+  // ─── Per-Store Past Orders (list view) ───
+  app.action('sfa_past_orders_store', async ({ ack, body, client }) => {
+    await ack();
+    try {
+      const visitId = (body as any).actions[0].value;
+      const visit = await getVisitById(visitId);
+      if (!visit) return;
+      const store = await getStoreById(visit.Retail_Store_Custom__c);
+      const storeName = store?.Account__r?.Name || store?.Name || 'Unknown';
+      const orders = await getStoreOrders(visit.Retail_Store_Custom__c, 15);
+      const modal = buildPastOrdersListView(orders, storeName);
+      await client.views.open({ trigger_id: (body as any).trigger_id, view: modal });
+    } catch (err: any) { console.error(err); }
   });
 
   // Onboarding Step 1 → Step 2

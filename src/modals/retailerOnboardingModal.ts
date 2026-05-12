@@ -17,6 +17,7 @@ export function buildOnboardingStep1Modal(): any {
       B.textInput('onb_phone', 'Phone', 'e.g. +91-9876543210'),
       B.textInput('onb_email', 'Email', 'email@example.com'),
       B.textInput('onb_website', 'Company Website (optional)', 'https://...', true),
+      B.textInput('onb_year_est', 'Year Established', 'e.g. 2015', true),
       B.divider(),
       B.staticSelect('onb_biz_type', 'Business Type', [
         B.option('Retail', 'Retail'), B.option('Wholesale', 'Wholesale'),

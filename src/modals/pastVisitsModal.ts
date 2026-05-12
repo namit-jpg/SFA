@@ -1,68 +1,64 @@
 import * as B from '../utils/blocks';
 
-export function buildPastVisitsModal(): any {
-  return {
-    type: 'modal',
-    callback_id: 'sfa_past_visits_search',
-    title: { type: 'plain_text', text: 'Past Visits' },
-    submit: { type: 'plain_text', text: 'Search' },
-    close: { type: 'plain_text', text: 'Close' },
-    blocks: [
-      B.header(':mag: Search Past Visits'),
-      B.context('Search by store name or visit outcome.'),
-      B.divider(),
-      {
-        type: 'input',
-        block_id: 'past_search',
-        label: { type: 'plain_text', text: 'Search' },
-        element: {
-          type: 'plain_text_input',
-          action_id: 'past_search',
-          placeholder: { type: 'plain_text', text: 'Store name or keyword...' },
-        },
-      },
-    ],
-  };
-}
-
-export function buildPastVisitsResultsView(
-  visits: any[],
-  storeMap: Map<string, any>,
-  query: string
+export function buildPastVisitsListView(
+  visits: any[], storeMap: Map<string, any>, storeName: string
 ): any {
   const blocks: any[] = [];
-  blocks.push(B.header(`:mag: Past Visits${query ? ` — "${query}"` : ''}`));
-  blocks.push(B.context(`${visits.length} visit(s) found`));
+  blocks.push(B.header(`:calendar: Past Visits — ${storeName}`));
+  blocks.push(B.context(`${visits.length} completed visit(s)`));
   blocks.push(B.divider());
 
   if (visits.length === 0) {
-    blocks.push(B.section(':information_source: No past visits found.'));
+    blocks.push(B.section(':information_source: No past visits to this store.'));
   }
 
-  for (const visit of visits.slice(0, 20)) {
-    const store = storeMap.get(visit.Retail_Store_Custom__c);
-    const storeName = store?.Account__r?.Name || store?.Name || 'Unknown';
-    const dateStr = B.formatDate(visit.Visit_Date__c || visit.PlannedDate__c);
-
+  for (const v of visits.slice(0, 15)) {
+    const store = storeMap.get(v.Retail_Store_Custom__c);
+    const loc = store?.City__c || store?.Street__c || '';
     blocks.push({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `:white_check_mark: *${dateStr}* | ${storeName}\nOrder: ${B.formatCurrency(visit.Order_Value__c || 0)} | Expenses: ${B.formatCurrency(visit.Total_Expense_Amount__c || 0)}${visit.Visit_Outcome__c ? `\n_${visit.Visit_Outcome__c}_` : ''}`,
+        text: `:white_check_mark: *${B.formatDate(v.Visit_Date__c)}*${loc ? ` — ${loc}` : ''}\nOrder: ${B.formatCurrency(v.Order_Value__c || 0)} | Expenses: ${B.formatCurrency(v.Total_Expense_Amount__c || 0)}${v.Visit_Outcome__c ? `\n_${v.Visit_Outcome__c}_` : ''}`,
       },
     });
     blocks.push(B.divider());
   }
 
-  blocks.push(B.actions(
-    B.button(':arrow_backward: Back', 'sfa_refresh_home'),
-  ));
+  return {
+    type: 'modal', callback_id: 'sfa_noop_modal',
+    title: { type: 'plain_text', text: 'Past Visits' },
+    close: { type: 'plain_text', text: 'Close' },
+    blocks,
+  };
+}
+
+export function buildPastOrdersListView(
+  orders: any[], storeName: string
+): any {
+  const blocks: any[] = [];
+  blocks.push(B.header(`:package: Past Orders — ${storeName}`));
+  blocks.push(B.context(`${orders.length} order(s)`));
+  blocks.push(B.divider());
+
+  if (orders.length === 0) {
+    blocks.push(B.section(':information_source: No orders for this store.'));
+  }
+
+  for (const o of orders.slice(0, 15)) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*#${o.OrderNumber}* | ${B.formatDate(o.EffectiveDate)} | ${B.formatCurrency(o.TotalAmount)}\nStatus: ${o.Status}`,
+      },
+    });
+    blocks.push(B.divider());
+  }
 
   return {
-    type: 'modal',
-    callback_id: 'sfa_past_visits_search',
-    title: { type: 'plain_text', text: 'Past Visits' },
-    submit: { type: 'plain_text', text: 'Search Again' },
+    type: 'modal', callback_id: 'sfa_noop_modal',
+    title: { type: 'plain_text', text: 'Past Orders' },
     close: { type: 'plain_text', text: 'Close' },
     blocks,
   };

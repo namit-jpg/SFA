@@ -51,8 +51,6 @@ export function buildRepHomeView(
   if (!attendanceMarked) {
     quickActions.push(B.button(':camera: Mark Attendance', 'sfa_mark_attendance', undefined, 'primary'));
   }
-
-  quickActions.push(B.button(':mag: Past Visits', 'sfa_open_past_visits'));
   quickActions.push(B.button(':new: Retailer Onboarding', 'sfa_open_onboarding'));
 
   blocks.push(B.actions(...quickActions));
@@ -74,6 +72,10 @@ export function buildRepHomeView(
 
     blocks.push(B.actions(
       B.button(':bulb: Insights', 'sfa_visit_intel', activeVisit.Id),
+      B.button(':calendar: Past Visits', 'sfa_past_visits_store', activeVisit.Id),
+      B.button(':package: Past Orders', 'sfa_past_orders_store', activeVisit.Id),
+    ));
+    blocks.push(B.actions(
       B.button(':shopping_trolley: Create Order', 'sfa_create_order', activeVisit.Id, 'primary'),
       B.button(':clipboard: Fill Survey', 'sfa_open_survey', activeVisit.Id),
       B.button(':moneybag: Expense', 'sfa_open_expense', activeVisit.Id),
