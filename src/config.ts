@@ -13,6 +13,8 @@ export const config = {
     clientSecret: process.env.SF_CLIENT_SECRET || '',
     username: process.env.SF_USERNAME || '',
     password: process.env.SF_PASSWORD || '',
+    accessToken: process.env.SF_ACCESS_TOKEN || '',
+    instanceUrl: process.env.SF_INSTANCE_URL || '',
   },
   port: parseInt(process.env.PORT || '3000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -42,6 +44,7 @@ export const SOBJECTS = {
   BULK_CLAIM: 'BulkClaim__c',
   INVOICE_CUSTOM: 'Invoice__c',
   INVENTORY: 'Inventory__c',
+  COMPETING_PRODUCT: 'Competing_Product__c',
 };
 
 export const VISIT_STATUS = {

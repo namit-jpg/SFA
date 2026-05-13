@@ -19,10 +19,19 @@ export async function getConnection(): Promise<any> {
     version: '62.0',
   });
 
-  await conn.login(
-    config.salesforce.username,
-    config.salesforce.password
-  );
+  if (config.salesforce.accessToken && config.salesforce.instanceUrl) {
+    conn = new jsforce.Connection({
+      instanceUrl: config.salesforce.instanceUrl,
+      accessToken: config.salesforce.accessToken,
+      version: '62.0',
+    });
+    console.log('[SF] Connected via access token');
+  } else {
+    await conn.login(
+      config.salesforce.username,
+      config.salesforce.password
+    );
+  }
 
   console.log(`[SF] Connected as ${conn.userInfo?.username}`);
   return conn;

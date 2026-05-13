@@ -1,4 +1,4 @@
-import { query, queryOne, esc, insertRecord } from './connection';
+import { query, queryOne, esc, insertRecord, updateRecord } from './connection';
 import { SOBJECTS } from '../config';
 
 export interface SFAUser {
@@ -34,7 +34,7 @@ export interface VisitRecord {
   Beat__r?: { Name: string };
   Retail_Store_Custom__c: string;
   AccountId__c: string;
-  AccountId__r?: { Name: string };
+  AccountId__r?: { Name: string; BillingStreet?: string; BillingCity?: string; BillingState?: string; Phone?: string };
   User__c: string;
   SFA_User__c: string;
   Visit_Notes__c: string;
@@ -44,6 +44,15 @@ export interface VisitRecord {
   Type__c: string;
   Purpose__c: string;
   Order__c: string;
+  Visitor__c?: string;
+  Check_In_Time__c?: string;
+  Check_Out_Time__c?: string;
+}
+
+export interface AccountContact {
+  Name: string;
+  Phone__c?: string;
+  Email?: string;
 }
 
 export interface RetailStoreRecord {
@@ -378,4 +387,52 @@ export async function getOrderItemsWithStock(orderId: string): Promise<any[]> {
      FROM OrderItem
      WHERE OrderId = '${esc(orderId)}'`
   );
+}
+
+// ─── Account Contact ───
+export async function getAccountContact(accountId: string): Promise<AccountContact | null> {
+  return queryOne<any>(
+    `SELECT Name, Phone, Email FROM Contact WHERE AccountId = '${esc(accountId)}' LIMIT 1`
+  );
+}
+
+// ─── Visit Insights 360 ───
+export async function getLastOrderSummary(accountId: string): Promise<any | null> {
+  const order = await queryOne<any>(
+    `SELECT Id, OrderNumber, TotalAmount, EffectiveDate FROM Order
+     WHERE AccountId = '${esc(accountId)}' AND Status != 'Cancelled'
+     ORDER BY EffectiveDate DESC LIMIT 1`
+  );
+  if (!order) return null;
+  const items = await query<any>(
+    `SELECT Id, Product2.Name, Quantity, UnitPrice, TotalPrice FROM OrderItem WHERE OrderId = '${esc(order.Id)}' ORDER BY Quantity DESC LIMIT 5`
+  );
+  return { ...order, items };
+}
+
+export async function getStoreVisitLogs(storeId: string, limit: number = 10): Promise<any[]> {
+  return query<any>(
+    `SELECT Id, Name, Visit_Date__c, Status__c, Type__c, SFA_User__r.Name, Planned_Start_Time__c, ActualStartTime__c
+     FROM ${SOBJECTS.VISIT}
+     WHERE Retail_Store_Custom__c = '${esc(storeId)}'
+     ORDER BY Visit_Date__c DESC LIMIT ${limit}`
+  );
+}
+
+// ─── Competing Products ───
+export async function createCompetingProduct(data: Record<string, any>): Promise<string> {
+  return insertRecord(SOBJECTS.COMPETING_PRODUCT, data);
+}
+
+// ─── Visit Notes ───
+export async function updateVisitNotes(visitId: string, notes: string): Promise<void> {
+  return updateRecord(SOBJECTS.VISIT, visitId, { Visit_Notes__c: notes });
+}
+
+export async function rescheduleVisit(visitId: string, newDate: string, reason: string): Promise<void> {
+  return updateRecord(SOBJECTS.VISIT, visitId, {
+    Visit_Date__c: newDate,
+    PlannedDate__c: newDate,
+    Not_Visited_Reason__c: reason,
+  });
 }
