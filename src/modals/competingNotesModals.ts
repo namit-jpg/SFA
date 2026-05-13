@@ -9,19 +9,25 @@ export function buildCompetingProductsModal(visitId: string): any {
     close: { type: 'plain_text', text: 'Close' },
     private_metadata: visitId,
     blocks: [
-      B.header(':memo: Competing Products'),
-      B.context('Record competitor products observed during this visit.'),
+      B.header(':memo: Record Competitor Products'),
+      B.context('Capture competing products found at this store.'),
       B.divider(),
+      // Product 1
+      { type: 'section', text: { type: 'mrkdwn', text: '*Product 1*' } },
       B.textInput('comp_name_1', 'Product Name*', 'e.g. Ultra Gloss Paint'),
       B.textInput('comp_brand_1', 'Brand', 'e.g. Asian Paints'),
       B.textInput('comp_price_1', 'Price (₹)', '0.00'),
       B.textInput('comp_remarks_1', 'Remarks', 'Any observations...', true, true),
       B.divider(),
+      // Product 2
+      { type: 'section', text: { type: 'mrkdwn', text: '*Product 2*' } },
       B.textInput('comp_name_2', 'Product Name', 'Another product...', true),
       B.textInput('comp_brand_2', 'Brand', '', true),
       B.textInput('comp_price_2', 'Price (₹)', '', true),
       B.textInput('comp_remarks_2', 'Remarks', '', true, true),
       B.divider(),
+      // Product 3
+      { type: 'section', text: { type: 'mrkdwn', text: '*Product 3*' } },
       B.textInput('comp_name_3', 'Product Name', 'Another product...', true),
       B.textInput('comp_brand_3', 'Brand', '', true),
       B.textInput('comp_price_3', 'Price (₹)', '', true),
@@ -39,18 +45,12 @@ export function buildVisitNotesModal(visitId: string, currentNote: string): any 
     close: { type: 'plain_text', text: 'Close' },
     private_metadata: visitId,
     blocks: [
-      B.header(':pencil2: Visit Notes'),
+      B.header(':pencil2: Edit Visit Notes'),
       B.divider(),
       {
-        type: 'input',
-        block_id: 'note_text',
+        type: 'input', block_id: 'note_text',
         label: { type: 'plain_text', text: 'Note' },
-        element: {
-          type: 'plain_text_input',
-          action_id: 'note_text',
-          multiline: true,
-          initial_value: currentNote || '',
-        },
+        element: { type: 'plain_text_input', action_id: 'note_text', multiline: true, initial_value: currentNote || '' },
       },
     ],
   };

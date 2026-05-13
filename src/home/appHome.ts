@@ -148,13 +148,17 @@ export function registerAppHome(app: App) {
     const uid = (body as any).user.id;
     const userCtx = await resolveUser(uid, client);
     if (!userCtx) return;
+    const now = new Date().toISOString();
     const today = B.todayDateString();
     const visits = await getDailyVisits(userCtx.sfUserId, today);
     const pending = visits.find((v: any) => v.Status__c === 'Planned');
     if (pending) {
-      await updateRecord(SOBJECTS.VISIT, pending.Id, { Check_In_Time__c: new Date().toISOString() });
+      await updateRecord(SOBJECTS.VISIT, pending.Id, { Check_In_Time__c: now });
     }
-    await client.chat.postEphemeral({ channel: uid, user: uid, text: ':white_check_mark: Checked in for today.' });
+    await client.chat.postEphemeral({
+      channel: uid, user: uid,
+      text: `:white_check_mark: Checked in for today.\n:calendar: ${B.formatDateTime(now)}`,
+    });
     await publishView(app, uid, client, userCtx);
   });
 
@@ -192,6 +196,46 @@ export function registerAppHome(app: App) {
   app.action('sfa_open_expense', async ({ ack, body, client }) => { await ack(); try { const m = buildExpenseModal((body as any).actions[0].value); await client.views.open({ trigger_id: (body as any).trigger_id, view: m }); } catch (e) { console.error(e); } });
   app.action('sfa_open_adhoc_visit', async ({ ack, body, client }) => { await ack(); try { const m = buildAdhocVisitModal(); await client.views.open({ trigger_id: (body as any).trigger_id, view: m }); } catch (e) { console.error(e); } });
   app.action('sfa_open_beat_plan', async ({ ack, body, client }) => { await ack(); try { const m = buildBeatPlanModal(); await client.views.open({ trigger_id: (body as any).trigger_id, view: m }); } catch (e) { console.error(e); } });
+
+  // ─── External Select Options (Products, Stores, Reps) ───
+  const productActions: string[] = [];
+  for (let i = 1; i <= 8; i++) productActions.push(`order_product_${i}`);
+  productActions.push('return_product_1', 'return_product_2');
+  for (const actionId of productActions) {
+    app.options(actionId, async ({ ack, payload }: any) => {
+      try {
+        const q = payload.value || '';
+        const products = q ? await searchProducts(q) : [];
+        const options = products.map((p: any) => ({
+          text: { type: 'plain_text' as const, text: `${p.Name} (${p.ProductCode || 'N/A'})` },
+          value: p.Id,
+        }));
+        await ack({ options });
+      } catch { await ack({ options: [] }); }
+    });
+  }
+
+  app.options('beat_reps', async ({ ack, payload }: any) => {
+    try {
+      const reps = await getRepsList();
+      const filtered = reps.filter((r: any) => r.Name.toLowerCase().includes((payload.value || '').toLowerCase()));
+      await ack({ options: filtered.map((r: any) => ({ text: { type: 'plain_text' as const, text: r.Name }, value: r.Id })) });
+    } catch { await ack({ options: [] }); }
+  });
+
+  app.options('beat_stores', async ({ ack, payload }: any) => {
+    try {
+      const stores = payload.value ? await searchStores(payload.value) : [];
+      await ack({ options: stores.map((s: any) => ({ text: { type: 'plain_text' as const, text: s.Account__r?.Name || s.Name }, value: s.Id })) });
+    } catch { await ack({ options: [] }); }
+  });
+
+  app.options('adhoc_store', async ({ ack, payload }: any) => {
+    try {
+      const stores = payload.value ? await searchStores(payload.value) : [];
+      await ack({ options: stores.map((s: any) => ({ text: { type: 'plain_text' as const, text: s.Account__r?.Name || s.Name }, value: s.Id })) });
+    } catch { await ack({ options: [] }); }
+  });
 
   // ─── Competing Products ───
   app.action('sfa_competing', async ({ ack, body, client }) => { await ack(); try { const m = buildCompetingProductsModal((body as any).actions[0].value); await client.views.open({ trigger_id: (body as any).trigger_id, view: m }); } catch (e) { console.error(e); } });
@@ -257,7 +301,7 @@ export function registerAppHome(app: App) {
 
       const vals = view.state.values as any;
       const lineItems: any[] = [];
-      for (let i = 1; i <= 5; i++) {
+      for (let i = 1; i <= 8; i++) {
         const pid = vals[`order_product_${i}`]?.[`order_product_${i}`]?.selected_option?.value;
         const qty = parseFloat(vals[`order_qty_${i}`]?.[`order_qty_${i}`]?.value || '0');
         if (pid && !isNaN(qty) && qty > 0) {

@@ -10,7 +10,7 @@ import {
   getDailyVisits, getActiveVisit, getVisitInsights, getTodayAttendance,
   getStoresByIds, getVisitById, getStoreVisitHistory, getStoreOrders,
   getFrequentlyBoughtProducts, getAccountContact, getLastOrderSummary,
-  getStoreVisitLogs, getAllStores,
+  getStoreVisitLogs, getAllStores, getVisitSurveyResponses,
 } from '../salesforce/soql';
 import * as B from '../utils/blocks';
 
@@ -45,17 +45,15 @@ function navBar(currentPage: Page): any {
     { id: 'sfa_nav_home', label: 'Home', emoji: ':house:', page: 'home' },
     { id: 'sfa_nav_visits', label: 'Visits', emoji: ':calendar:', page: 'visits' },
     { id: 'sfa_nav_orders', label: 'Orders', emoji: ':package:', page: 'orders' },
-    { id: 'sfa_nav_accounts', label: 'Accounts', emoji: ':office:', page: 'accounts' },
-    { id: 'sfa_nav_profile', label: 'Profile', emoji: ':bust_in_silhouette:', page: 'profile' },
   ];
-  return B.actions(...pages.map(p =>
-    B.button(
-      `${p.emoji} ${p.label}`,
-      p.id,
-      undefined,
-      currentPage === p.page ? 'primary' : undefined
-    )
-  ));
+  const actions = pages.map(p =>
+    B.button(`${p.emoji} ${p.label}`, p.id, undefined, currentPage === p.page ? 'primary' : undefined)
+  );
+  // Add Create Visit + Onboarding
+  actions.push(B.button(':heavy_plus_sign: Create Visit', 'sfa_open_adhoc_visit', undefined));
+  actions.push(B.button(':new: Onboarding', 'sfa_open_onboarding', undefined));
+  actions.push(B.button(':bust_in_silhouette: Profile', 'sfa_nav_profile', undefined, currentPage === 'profile' ? 'primary' : undefined));
+  return B.actions(...actions);
 }
 
 export async function publishView(app: App, slackUserId: string, client: any, userCtx: any) {
@@ -94,7 +92,8 @@ export async function publishView(app: App, slackUserId: string, client: any, us
       const storeMap = await getStoresByIds(storeIds);
       const store = storeMap.get(visit.Retail_Store_Custom__c);
       const contact = visit.AccountId__c ? await getAccountContact(visit.AccountId__c) : null;
-      blocks.push(...buildVisitDetailsView(visit, store, contact));
+      const surveys = await getVisitSurveyResponses(s.selectedVisitId);
+      blocks.push(...buildVisitDetailsView(visit, store, contact, surveys));
       break;
     }
     case 'visit_insights': {

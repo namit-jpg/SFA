@@ -26,8 +26,10 @@ export function buildVisitInsightsView(
     blocks.push(B.section('_No purchase history_'));
   }
   for (const p of freqProducts) {
+    const name = p.Product2?.Name || p.Name || 'Product';
+    const qty = p.totalQty || p.Quantity || 1;
     blocks.push(B.section(
-      `*${p.Product2?.Name || 'Unknown'}* — ${B.formatCurrency(0)} — Min Order Qty (Sec): ${p.totalQty || 1}`
+      `*${name}* — ${B.formatCurrency(0)} — Min Order Qty (Sec): ${qty}`
     ));
   }
   blocks.push(B.divider());
@@ -38,12 +40,20 @@ export function buildVisitInsightsView(
     blocks.push(B.section(
       `*Order Number:* #${lastOrder.OrderNumber}\n*Total Amount:* ${B.formatCurrency(lastOrder.TotalAmount || 0)}`
     ));
+    let orderTotal = 0;
     if (lastOrder.items) {
       for (const item of lastOrder.items) {
+        const iname = item.Product2?.Name || item.Name || 'Item';
+        const iqty = item.Quantity || 0;
+        const iprice = item.UnitPrice || 0;
+        orderTotal += iprice * iqty;
         blocks.push(B.section(
-          `*${item.Product2?.Name || 'Item'}* — Qty: ${item.Quantity} — ${B.formatCurrency(item.UnitPrice || 0)}`
+          `*${iname}* — Qty: ${iqty} — ${B.formatCurrency(iprice)}`
         ));
       }
+    }
+    if (orderTotal > 0 && !lastOrder.TotalAmount) {
+      blocks.push(B.context(`_Calculated Total: ${B.formatCurrency(orderTotal)}_`));
     }
     blocks.push(B.divider());
   }

@@ -2,7 +2,7 @@ import { VisitRecord, RetailStoreRecord, AccountContact } from '../../salesforce
 import * as B from '../../utils/blocks';
 
 export function buildVisitDetailsView(
-  visit: VisitRecord, store: RetailStoreRecord | undefined, contact: AccountContact | null
+  visit: VisitRecord, store: RetailStoreRecord | undefined, contact: AccountContact | null, surveys?: any[]
 ): any[] {
   const blocks: any[] = [];
   const storeName = store?.Account__r?.Name || store?.Name || 'N/A';
@@ -54,6 +54,15 @@ export function buildVisitDetailsView(
     B.button(':pencil2: Add Note', 'sfa_open_note', visit.Id),
   ));
   blocks.push(B.divider());
+
+  // ─── Survey Responses ───
+  if (surveys && surveys.length > 0) {
+    blocks.push(B.header('SURVEY RESPONSES'));
+    for (const s of surveys) {
+      blocks.push(B.section(`*${s.Question__c || 'Q'}*\n> ${s.Answer__c || '-'}`));
+    }
+    blocks.push(B.divider());
+  }
 
   // ─── Visit Insights ───
   blocks.push(B.actions(
