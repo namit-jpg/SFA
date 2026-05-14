@@ -259,7 +259,7 @@ export function registerAppHome(app: App) {
   app.action('sfa_open_beat_plan', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildBeatPlanModal() }); } catch (e) { await notifyError(uid, client, e); } });
 
   // ─── External Select Options (Products, Stores, Reps) ───
-  const productActions: string[] = [];
+  const productActions: string[] = ['order_search_product'];
   for (let i = 1; i <= 8; i++) productActions.push(`order_product_${i}`);
   productActions.push('return_product_1', 'return_product_2');
   for (const actionId of productActions) {
