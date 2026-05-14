@@ -29,10 +29,14 @@ import * as B from '../utils/blocks';
 import { SOBJECTS, VISIT_STATUS, VISIT_TYPE } from '../config';
 import { insertRecord, updateRecord } from '../salesforce/connection';
 
-const sfUserCache = new Map<string, { sfUserId: string; sfaUser: any; sfUserRecordId: string; isManager: boolean }>();
+const USER_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const sfUserCache = new Map<string, { data: { sfUserId: string; sfaUser: any; sfUserRecordId: string; isManager: boolean }; ts: number }>();
 
 async function resolveUser(slackUserId: string, client: any) {
-  if (sfUserCache.has(slackUserId)) return sfUserCache.get(slackUserId);
+  const cached = sfUserCache.get(slackUserId);
+  if (cached && Date.now() - cached.ts < USER_CACHE_TTL_MS) return cached.data;
+  if (cached) sfUserCache.delete(slackUserId); // expired
+
   const slackUser = await client.users.info({ user: slackUserId });
   const email = slackUser.user?.profile?.email;
   if (!email) return null;
@@ -45,7 +49,7 @@ async function resolveUser(slackUserId: string, client: any) {
     sfUserRecordId: sfUser?.Id || '',
     isManager: !!sfUser?.UserRoleId,
   };
-  sfUserCache.set(slackUserId, r);
+  sfUserCache.set(slackUserId, { data: r, ts: Date.now() });
   return r;
 }
 
@@ -190,12 +194,17 @@ export function registerAppHome(app: App) {
     if (u) await publishView(app, uid, client, u);
   });
 
+  async function notifyError(client: any, uid: string, e: unknown) {
+    console.error(e);
+    await client.chat.postEphemeral({ channel: uid, user: uid, text: ':warning: Something went wrong. Please try again.' }).catch(() => {});
+  }
+
   // ─── Existing Action Handlers ───
-  app.action('sfa_create_order', async ({ ack, body, client }) => { await ack(); try { const m = buildCreateOrderModal((body as any).actions[0].value); await client.views.open({ trigger_id: (body as any).trigger_id, view: m }); } catch (e) { console.error(e); } });
-  app.action('sfa_open_survey', async ({ ack, body, client }) => { await ack(); try { const m = buildSurveyModal((body as any).actions[0].value); await client.views.open({ trigger_id: (body as any).trigger_id, view: m }); } catch (e) { console.error(e); } });
-  app.action('sfa_open_expense', async ({ ack, body, client }) => { await ack(); try { const m = buildExpenseModal((body as any).actions[0].value); await client.views.open({ trigger_id: (body as any).trigger_id, view: m }); } catch (e) { console.error(e); } });
-  app.action('sfa_open_adhoc_visit', async ({ ack, body, client }) => { await ack(); try { const m = buildAdhocVisitModal(); await client.views.open({ trigger_id: (body as any).trigger_id, view: m }); } catch (e) { console.error(e); } });
-  app.action('sfa_open_beat_plan', async ({ ack, body, client }) => { await ack(); try { const m = buildBeatPlanModal(); await client.views.open({ trigger_id: (body as any).trigger_id, view: m }); } catch (e) { console.error(e); } });
+  app.action('sfa_create_order', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildCreateOrderModal((body as any).actions[0].value) }); } catch (e) { await notifyError(client, uid, e); } });
+  app.action('sfa_open_survey', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildSurveyModal((body as any).actions[0].value) }); } catch (e) { await notifyError(client, uid, e); } });
+  app.action('sfa_open_expense', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildExpenseModal((body as any).actions[0].value) }); } catch (e) { await notifyError(client, uid, e); } });
+  app.action('sfa_open_adhoc_visit', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildAdhocVisitModal() }); } catch (e) { await notifyError(client, uid, e); } });
+  app.action('sfa_open_beat_plan', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildBeatPlanModal() }); } catch (e) { await notifyError(client, uid, e); } });
 
   // ─── External Select Options (Products, Stores, Reps) ───
   const productActions: string[] = [];
@@ -238,21 +247,21 @@ export function registerAppHome(app: App) {
   });
 
   // ─── Competing Products ───
-  app.action('sfa_competing', async ({ ack, body, client }) => { await ack(); try { const m = buildCompetingProductsModal((body as any).actions[0].value); await client.views.open({ trigger_id: (body as any).trigger_id, view: m }); } catch (e) { console.error(e); } });
+  app.action('sfa_competing', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildCompetingProductsModal((body as any).actions[0].value) }); } catch (e) { await notifyError(client, uid, e); } });
 
   // ─── Add Note ───
   app.action('sfa_open_note', async ({ ack, body, client }) => {
     await ack();
+    const uid = (body as any).user.id;
     try {
       const visitId = (body as any).actions[0].value;
       const visit = await getVisitById(visitId);
-      const m = buildVisitNotesModal(visitId, visit?.Visit_Notes__c || '');
-      await client.views.open({ trigger_id: (body as any).trigger_id, view: m });
-    } catch (e) { console.error(e); }
+      await client.views.open({ trigger_id: (body as any).trigger_id, view: buildVisitNotesModal(visitId, visit?.Visit_Notes__c || '') });
+    } catch (e) { await notifyError(client, uid, e); }
   });
 
   // ─── Reschedule ───
-  app.action('sfa_reschedule_visit', async ({ ack, body, client }) => { await ack(); try { const m = buildRescheduleModal((body as any).actions[0].value); await client.views.open({ trigger_id: (body as any).trigger_id, view: m }); } catch (e) { console.error(e); } });
+  app.action('sfa_reschedule_visit', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildRescheduleModal((body as any).actions[0].value) }); } catch (e) { await notifyError(client, uid, e); } });
 
   // ─── Noop ───
   app.action('sfa_noop', async ({ ack }) => { await ack(); });
@@ -427,7 +436,7 @@ export function registerAppHome(app: App) {
   });
 
   // ─── Onboarding (3-step) ───
-  app.action('sfa_open_onboarding', async ({ ack, body, client }) => { await ack(); try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildOnboardingStep1Modal() }); } catch (e) { console.error(e); } });
+  app.action('sfa_open_onboarding', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildOnboardingStep1Modal() }); } catch (e) { await notifyError(client, uid, e); } });
 
   function parseViewState(values: any): Record<string, any> {
     const data: Record<string, any> = {};

@@ -1,4 +1,4 @@
-import { query, queryOne, esc, insertRecord, updateRecord } from './connection';
+import { query, queryOne, esc, escLike, soqlDate, insertRecord, updateRecord } from './connection';
 import { SOBJECTS } from '../config';
 
 export interface SFAUser {
@@ -16,6 +16,7 @@ export interface RetailStoreRecord {
   Id: string;
   Name: string;
   Store_Code__c: string;
+  City__c?: string;
   Account__c: string;
   Account__r?: { Name: string };
 }
@@ -55,13 +56,6 @@ export interface AccountContact {
   Email?: string;
 }
 
-export interface RetailStoreRecord {
-  Id: string;
-  Name: string;
-  Store_Code__c: string;
-  City__c: string;
-  Account__c: string;
-}
 
 export async function getSFUserByEmail(email: string): Promise<{ Id: string; Name: string; Email: string; UserRoleId: string } | null> {
   return queryOne<any>(
@@ -91,9 +85,7 @@ export async function getManagerStatus(sfUserId: string): Promise<boolean> {
 }
 
 export async function getDailyVisits(sfaUserId: string, date: string): Promise<VisitRecord[]> {
-  const dateClause = ['TODAY', 'YESTERDAY', 'TOMORROW', 'LAST_WEEK', 'THIS_WEEK', 'LAST_MONTH'].includes(date)
-    ? date
-    : date;
+  const dateClause = soqlDate(date);
   return query<VisitRecord>(
     `SELECT Id, Name, Status__c, PlannedDate__c, Visit_Date__c, Planned_Start_Time__c, Planned_End_Time__c,
             ActualStartTime__c, ActualEndTime__c, Beat__c, Beat__r.Name,
@@ -142,7 +134,7 @@ export async function getBeatWithLineItems(beatId: string) {
 }
 
 export async function searchStores(searchTerm: string): Promise<RetailStoreRecord[]> {
-  const escaped = esc(searchTerm);
+  const escaped = escLike(searchTerm);
   return query<RetailStoreRecord>(
     `SELECT Id, Name, Store_Code__c, Account__c, Account__r.Name
      FROM ${SOBJECTS.RETAIL_STORE}
@@ -180,7 +172,7 @@ export async function getAllStores(): Promise<RetailStoreRecord[]> {
 }
 
 export async function searchProducts(searchTerm: string): Promise<any[]> {
-  const escaped = esc(searchTerm);
+  const escaped = escLike(searchTerm);
   return query<any>(
     `SELECT Id, Name, ProductCode, Description, Family, IsActive
      FROM ${SOBJECTS.PRODUCT}
@@ -233,9 +225,7 @@ export async function getRepsList(): Promise<any[]> {
 }
 
 export async function getTeamVisits(managerSfUserId: string, date: string): Promise<any[]> {
-  const dateClause = ['TODAY', 'YESTERDAY', 'TOMORROW', 'LAST_WEEK', 'THIS_WEEK', 'LAST_MONTH'].includes(date)
-    ? date
-    : date;
+  const dateClause = soqlDate(date);
 
   const reps = await query<any>(
     `SELECT Id FROM ${SOBJECTS.SFA_USER} WHERE IsActive__c = true`
@@ -280,7 +270,7 @@ export async function getStoreWithLocation(storeId: string): Promise<any | null>
 }
 
 export async function getPastVisits(sfaUserId: string, search?: string, limit: number = 50): Promise<VisitRecord[]> {
-  const searchClause = search ? `AND (Retail_Store_Custom__r.Name LIKE '%${esc(search)}%' OR Visit_Outcome__c LIKE '%${esc(search)}%')` : '';
+  const searchClause = search ? `AND (Retail_Store_Custom__r.Name LIKE '%${escLike(search)}%' OR Visit_Outcome__c LIKE '%${escLike(search)}%')` : '';
   return query<VisitRecord>(
     `SELECT Id, Name, Status__c, PlannedDate__c, Visit_Date__c, Planned_Start_Time__c,
             ActualStartTime__c, ActualEndTime__c, Beat__c, Beat__r.Name,
@@ -317,7 +307,7 @@ export async function getVisitInsights(sfaUserId: string): Promise<{
 }
 
 export async function getTodayAttendance(sfaUserId: string, date: string): Promise<{ Id: string; Check_In_Selfie__c: string } | null> {
-  const dateClause = ['TODAY', 'YESTERDAY', 'TOMORROW', 'LAST_WEEK', 'THIS_WEEK', 'LAST_MONTH'].includes(date) ? date : date;
+  const dateClause = soqlDate(date);
   return queryOne<any>(
     `SELECT Id, Check_In_Selfie__c FROM ${SOBJECTS.VISIT}
      WHERE SFA_User__c = '${esc(sfaUserId)}' AND Visit_Date__c = ${dateClause}
@@ -330,7 +320,7 @@ export async function insertPartnerRequest(data: Record<string, any>): Promise<s
   return insertRecord(SOBJECTS.PARTNER_REQUEST, data);
 }
 
-export { esc, insertRecord };
+export { esc, escLike, soqlDate, insertRecord };
 
 // ─── Visit Intelligence ───
 export async function getStoreVisitHistory(storeId: string, limit: number = 5): Promise<any[]> {

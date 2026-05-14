@@ -8,16 +8,11 @@ export async function getConnection(): Promise<any> {
     try {
       await conn.identity();
       return conn;
-    } catch {
-      console.log('[SF] Session expired, reconnecting...');
+    } catch (e) {
+      console.log('[SF] Session check failed, reconnecting...', e);
       conn = null;
     }
   }
-
-  conn = new jsforce.Connection({
-    loginUrl: config.salesforce.loginUrl,
-    version: '62.0',
-  });
 
   if (config.salesforce.accessToken && config.salesforce.instanceUrl) {
     conn = new jsforce.Connection({
@@ -27,18 +22,29 @@ export async function getConnection(): Promise<any> {
     });
     console.log('[SF] Connected via access token');
   } else {
-    await conn.login(
-      config.salesforce.username,
-      config.salesforce.password
-    );
+    const c = new jsforce.Connection({
+      loginUrl: config.salesforce.loginUrl,
+      version: '62.0',
+    });
+    try {
+      await c.login(config.salesforce.username, config.salesforce.password);
+    } catch (e) {
+      console.error('[SF] Login failed:', e);
+      throw e;
+    }
+    conn = c;
   }
 
-  console.log(`[SF] Connected as ${conn.userInfo?.username}`);
+  console.log(`[SF] Connected as ${(conn as any).userInfo?.username ?? 'unknown'}`);
   return conn;
 }
 
 export function esc(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+export function escLike(value: string): string {
+  return esc(value).replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
 export async function query<T = any>(soql: string): Promise<T[]> {
@@ -95,9 +101,9 @@ export async function getPicklistValues(sobject: string, field: string): Promise
   return f.picklistValues.map((pv: any) => pv.value).filter(Boolean);
 }
 
+const SOQL_DATE_LITERALS = new Set(['TODAY', 'YESTERDAY', 'TOMORROW', 'LAST_WEEK', 'THIS_WEEK', 'NEXT_WEEK', 'LAST_MONTH', 'THIS_MONTH']);
+
 export function soqlDate(dateStr: string): string {
-  if (['TODAY', 'YESTERDAY', 'TOMORROW', 'LAST_WEEK', 'THIS_WEEK', 'NEXT_WEEK', 'LAST_MONTH', 'THIS_MONTH'].includes(dateStr)) {
-    return dateStr;
-  }
-  return dateStr;
+  if (SOQL_DATE_LITERALS.has(dateStr)) return dateStr;
+  return `'${esc(dateStr)}'`;
 }

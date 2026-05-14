@@ -60,78 +60,86 @@ export async function publishView(app: App, slackUserId: string, client: any, us
   const s = getState(slackUserId);
   const blocks: any[] = [];
 
-  switch (s.page) {
-    case 'home': {
-      const today = B.todayDateString();
-      const [dailyVisits, insights, attendance] = await Promise.all([
-        getDailyVisits(userCtx.sfUserId, today),
-        getVisitInsights(userCtx.sfUserId),
-        getTodayAttendance(userCtx.sfUserId, today),
-      ]);
-      const weekVisits = await getDailyVisits(userCtx.sfUserId, 'THIS_WEEK');
-      const completed = weekVisits.filter((v: any) => v.Status__c === 'Completed').length;
-      blocks.push(...buildHomeView(userCtx.sfaUser?.Name || 'User', dailyVisits, insights, completed, weekVisits.length, !!attendance));
-      break;
-    }
-    case 'visits': {
-      const today = B.todayDateString();
-      const dailyVisits = await getDailyVisits(userCtx.sfUserId, today);
-      const allVisits = s.visitFilter === 'all' ? await getDailyVisits(userCtx.sfUserId, 'LAST_MONTH') : [];
-      const visits = s.visitFilter === 'all' ? allVisits : dailyVisits;
-      const storeIds = visits.map((v: any) => v.Retail_Store_Custom__c).filter(Boolean);
-      const storeMap = await getStoresByIds(storeIds);
-      const activeVisit = await getActiveVisit(userCtx.sfUserId);
-      blocks.push(...buildVisitsView(visits, storeMap, s.visitFilter, activeVisit?.Id || null));
-      break;
-    }
-    case 'visit_details': {
-      if (!s.selectedVisitId) { setState(slackUserId, { page: 'visits' }); return publishView(app, slackUserId, client, userCtx); }
-      const visit = await getVisitById(s.selectedVisitId);
-      if (!visit) { setState(slackUserId, { page: 'visits' }); return publishView(app, slackUserId, client, userCtx); }
-      const storeIds = [visit.Retail_Store_Custom__c].filter(Boolean);
-      const storeMap = await getStoresByIds(storeIds);
-      const store = storeMap.get(visit.Retail_Store_Custom__c);
-      const contact = visit.AccountId__c ? await getAccountContact(visit.AccountId__c) : null;
-      const surveys = await getVisitSurveyResponses(s.selectedVisitId);
-      blocks.push(...buildVisitDetailsView(visit, store, contact, surveys));
-      break;
-    }
-    case 'visit_insights': {
-      if (!s.selectedVisitId) { setState(slackUserId, { page: 'visit_details' }); return publishView(app, slackUserId, client, userCtx); }
-      const visit = await getVisitById(s.selectedVisitId);
-      if (!visit) { setState(slackUserId, { page: 'visit_details' }); return publishView(app, slackUserId, client, userCtx); }
-      const store = await getStoresByIds([visit.Retail_Store_Custom__c]);
-      const storeRec = store.get(visit.Retail_Store_Custom__c);
-      const storeName = storeRec?.Account__r?.Name || storeRec?.Name || 'N/A';
+  try {
+    switch (s.page) {
+      case 'home': {
+        const today = B.todayDateString();
+        const [dailyVisits, insights, attendance] = await Promise.all([
+          getDailyVisits(userCtx.sfUserId, today),
+          getVisitInsights(userCtx.sfUserId),
+          getTodayAttendance(userCtx.sfUserId, today),
+        ]);
+        const weekVisits = await getDailyVisits(userCtx.sfUserId, 'THIS_WEEK');
+        const completed = weekVisits.filter((v: any) => v.Status__c === 'Completed').length;
+        blocks.push(...buildHomeView(userCtx.sfaUser?.Name || 'User', dailyVisits, insights, completed, weekVisits.length, !!attendance));
+        break;
+      }
+      case 'visits': {
+        const today = B.todayDateString();
+        const dailyVisits = await getDailyVisits(userCtx.sfUserId, today);
+        const allVisits = s.visitFilter === 'all' ? await getDailyVisits(userCtx.sfUserId, 'LAST_MONTH') : [];
+        const visits = s.visitFilter === 'all' ? allVisits : dailyVisits;
+        const storeIds = visits.map((v: any) => v.Retail_Store_Custom__c).filter(Boolean);
+        const storeMap = await getStoresByIds(storeIds);
+        const activeVisit = await getActiveVisit(userCtx.sfUserId);
+        blocks.push(...buildVisitsView(visits, storeMap, s.visitFilter, activeVisit?.Id || null));
+        break;
+      }
+      case 'visit_details': {
+        if (!s.selectedVisitId) { setState(slackUserId, { page: 'visits' }); return publishView(app, slackUserId, client, userCtx); }
+        const visit = await getVisitById(s.selectedVisitId);
+        if (!visit) { setState(slackUserId, { page: 'visits' }); return publishView(app, slackUserId, client, userCtx); }
+        const storeIds = [visit.Retail_Store_Custom__c].filter(Boolean);
+        const storeMap = await getStoresByIds(storeIds);
+        const store = storeMap.get(visit.Retail_Store_Custom__c);
+        const contact = visit.AccountId__c ? await getAccountContact(visit.AccountId__c) : null;
+        const surveys = await getVisitSurveyResponses(s.selectedVisitId);
+        blocks.push(...buildVisitDetailsView(visit, store, contact, surveys));
+        break;
+      }
+      case 'visit_insights': {
+        if (!s.selectedVisitId) { setState(slackUserId, { page: 'visit_details' }); return publishView(app, slackUserId, client, userCtx); }
+        const visit = await getVisitById(s.selectedVisitId);
+        if (!visit) { setState(slackUserId, { page: 'visit_details' }); return publishView(app, slackUserId, client, userCtx); }
+        const store = await getStoresByIds([visit.Retail_Store_Custom__c]);
+        const storeRec = store.get(visit.Retail_Store_Custom__c);
+        const storeName = storeRec?.Account__r?.Name || storeRec?.Name || 'N/A';
 
-      const [history, orders, freqProducts, lastOrder, logs] = await Promise.all([
-        getStoreVisitHistory(visit.Retail_Store_Custom__c, 5),
-        getStoreOrders(visit.Retail_Store_Custom__c, 5),
-        getFrequentlyBoughtProducts(visit.AccountId__c, 5),
-        getLastOrderSummary(visit.AccountId__c),
-        getStoreVisitLogs(visit.Retail_Store_Custom__c, 10),
-      ]);
-      blocks.push(...buildVisitInsightsView(storeName, history, freqProducts, lastOrder, logs));
-      break;
+        const [history, orders, freqProducts, lastOrder, logs] = await Promise.all([
+          getStoreVisitHistory(visit.Retail_Store_Custom__c, 5),
+          getStoreOrders(visit.Retail_Store_Custom__c, 5),
+          getFrequentlyBoughtProducts(visit.AccountId__c, 5),
+          getLastOrderSummary(visit.AccountId__c),
+          getStoreVisitLogs(visit.Retail_Store_Custom__c, 10),
+        ]);
+        blocks.push(...buildVisitInsightsView(storeName, history, freqProducts, lastOrder, logs));
+        break;
+      }
+      case 'orders': {
+        const today = B.todayDateString();
+        const dailyVisits = await getDailyVisits(userCtx.sfUserId, today);
+        const storeIds = dailyVisits.map((v: any) => v.Retail_Store_Custom__c).filter(Boolean);
+        const storeMap = await getStoresByIds(storeIds);
+        blocks.push(...buildOrdersView(dailyVisits, storeMap));
+        break;
+      }
+      case 'accounts': {
+        const stores = await getAllStores();
+        blocks.push(...buildAccountsView(stores));
+        break;
+      }
+      case 'profile': {
+        const insights = await getVisitInsights(userCtx.sfUserId);
+        blocks.push(...buildProfileView(userCtx.sfaUser?.Name || 'User', insights));
+        break;
+      }
     }
-    case 'orders': {
-      const today = B.todayDateString();
-      const dailyVisits = await getDailyVisits(userCtx.sfUserId, today);
-      const storeIds = dailyVisits.map((v: any) => v.Retail_Store_Custom__c).filter(Boolean);
-      const storeMap = await getStoresByIds(storeIds);
-      blocks.push(...buildOrdersView(dailyVisits, storeMap));
-      break;
-    }
-    case 'accounts': {
-      const stores = await getAllStores();
-      blocks.push(...buildAccountsView(stores));
-      break;
-    }
-    case 'profile': {
-      const insights = await getVisitInsights(userCtx.sfUserId);
-      blocks.push(...buildProfileView(userCtx.sfaUser?.Name || 'User', insights));
-      break;
-    }
+  } catch (e) {
+    console.error('[router] publishView error:', e);
+    blocks.push(B.section(':warning: Failed to load this page. Please try refreshing.'));
+    blocks.push(B.actions(B.button(':arrows_counterclockwise: Refresh', 'sfa_refresh_home')));
+    await client.views.publish({ user_id: slackUserId, view: { type: 'home', blocks } });
+    return;
   }
 
   blocks.unshift(navBar(s.page));

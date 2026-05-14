@@ -1,5 +1,5 @@
 import { App, LogLevel } from '@slack/bolt';
-import { config } from './config';
+import { config, validateConfig } from './config';
 import { registerAppHome } from './home/appHome';
 
 const app = new App({
@@ -16,6 +16,7 @@ registerAppHome(app);
 app.error(async (error) => { console.error('[Bolt]', error); });
 
 (async () => {
+  validateConfig();
   console.log('═══════════════════════════════════════');
   console.log('  SFA Slack Bot v2 — Starting...');
   console.log('  Environment:', config.nodeEnv);

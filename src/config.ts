@@ -47,6 +47,23 @@ export const SOBJECTS = {
   COMPETING_PRODUCT: 'Competing_Product__c',
 };
 
+export function validateConfig(): void {
+  const requiredSlack: [string, string][] = [
+    ['SLACK_BOT_TOKEN', config.slack.botToken],
+    ['SLACK_SIGNING_SECRET', config.slack.signingSecret],
+    ['SLACK_APP_TOKEN', config.slack.appToken],
+  ];
+  for (const [name, val] of requiredSlack) {
+    if (!val) throw new Error(`Missing required env var: ${name}`);
+  }
+  if (!config.salesforce.accessToken && (!config.salesforce.username || !config.salesforce.password)) {
+    throw new Error('Must set either SF_ACCESS_TOKEN (+ SF_INSTANCE_URL) or both SF_USERNAME and SF_PASSWORD');
+  }
+  if (isNaN(config.port) || config.port < 1 || config.port > 65535) {
+    throw new Error(`Invalid PORT: ${process.env.PORT}`);
+  }
+}
+
 export const VISIT_STATUS = {
   PLANNED: 'Planned',
   IN_PROGRESS: 'In Progress',
