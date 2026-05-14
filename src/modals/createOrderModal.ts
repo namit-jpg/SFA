@@ -8,10 +8,7 @@ export function buildOrderSearchModal(visitId: string, currentItems: any[]): any
 
   // Current Order Summary
   if (currentItems.length > 0) {
-    blocks.push({
-      type: 'section',
-      text: { type: 'mrkdwn', text: `*Current Order (${currentItems.length} items)*` },
-    });
+    blocks.push(B.section(`*Current Order (${currentItems.length} items)*`));
     let total = 0;
     for (const item of currentItems) {
       const amt = (item.unitPrice || 0) * (item.quantity || 1);
@@ -23,19 +20,24 @@ export function buildOrderSearchModal(visitId: string, currentItems: any[]): any
   }
 
   // Search
-    blocks.push(B.externalSelect('order_search_product', ':mag: Search Product', 'Type to search products...', false, 1));
-    blocks.push(B.numberInput('order_search_qty', ':1234: Quantity', 'Enter quantity', true, '1'));
-    if (currentItems.length > 0) {
-      blocks.push(B.divider());
-      blocks.push(B.context(':bulb: Click Submit with empty search to review and place your order.'));
-    }
+  blocks.push(B.externalSelect('order_search_product', ':mag: Search Product', 'Type to search products...', currentItems.length === 0 ? false : true, 1));
+  blocks.push(B.numberInput('order_search_qty', ':1234: Quantity', 'Enter quantity', true, '1'));
+
+  // Action picker
+  if (currentItems.length > 0) {
+    blocks.push(B.divider());
+    blocks.push(B.staticSelect('order_action', 'What would you like to do?', [
+      B.option(':heavy_plus_sign: Add to cart & continue adding', 'add'),
+      B.option(':white_check_mark: Review & place order — done adding', 'review'),
+    ], 'Choose action'));
+  }
 
   return {
     type: 'modal',
     callback_id: 'sfa_order_add_item',
     title: { type: 'plain_text', text: 'Create Order' },
-    submit:     { type: 'plain_text', text: currentItems.length > 0 ? `Add More (${currentItems.length} items)` : 'Add to Order' },
-    close: { type: 'plain_text', text: currentItems.length > 0 ? 'Review & Place Order' : 'Cancel' },
+    submit: { type: 'plain_text', text: currentItems.length > 0 ? 'Continue' : 'Add to Order' },
+    close: { type: 'plain_text', text: 'Cancel' },
     private_metadata: visitId,
     blocks,
   };
@@ -50,18 +52,12 @@ export function buildOrderReviewModal(visitId: string, items: any[]): any {
   for (const item of items) {
     const amt = (item.unitPrice || 0) * (item.quantity || 1);
     total += amt;
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*${item.name}*\nQty: ${item.quantity} | Unit Price: ${B.formatCurrency(item.unitPrice)} | Subtotal: ${B.formatCurrency(amt)}`,
-      },
-    });
+    blocks.push(B.section(`*${item.name}*\nQty: ${item.quantity} | Unit Price: ${B.formatCurrency(item.unitPrice)} | Subtotal: ${B.formatCurrency(amt)}`));
   }
   blocks.push(B.divider());
   blocks.push(B.section(`*Total Amount: ${B.formatCurrency(total)}*`));
   blocks.push(B.divider());
-  blocks.push(B.context(':information_source: Click Submit to place this order. Items cannot be modified after submission.'));
+  blocks.push(B.context(':information_source: Click Submit to place this order.'));
 
   return {
     type: 'modal',

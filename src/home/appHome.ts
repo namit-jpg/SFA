@@ -394,9 +394,22 @@ export function registerAppHome(app: App) {
       const vals = view.state.values as any;
       const pid = vals.order_search_product?.order_search_product?.selected_option?.value;
       const qty = parseFloat(vals.order_search_qty?.order_search_qty?.value || '1') || 1;
+      const action = vals.order_action?.order_action?.selected_option?.value || 'add';
 
       let items = orderState.get(uid) || [];
 
+      // If user chose "Review & Place Order", switch to review modal
+      if (action === 'review') {
+        if (items.length === 0) {
+          await ack({ response_action: 'errors', errors: { error: 'Add at least one product first.' } });
+          return;
+        }
+        const reviewModal = buildOrderReviewModal(visitId, items);
+        await ack({ response_action: 'update', view: reviewModal });
+        return;
+      }
+
+      // Add product to cart
       if (pid) {
         const pbId = await getStandardPricebookId();
         const pinfo = pbId ? await getPriceForProduct(pid, pbId) : null;
@@ -413,9 +426,7 @@ export function registerAppHome(app: App) {
         const updatedModal = buildOrderSearchModal(visitId, items);
         await ack({ response_action: 'update', view: updatedModal });
       } else {
-        // No product entered → review and place order
-        const reviewModal = buildOrderReviewModal(visitId, items);
-        await ack({ response_action: 'update', view: reviewModal });
+        await ack({ response_action: 'errors', errors: { error: 'Search and select a product, then click Continue.' } });
       }
     } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
   });
