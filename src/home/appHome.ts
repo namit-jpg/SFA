@@ -17,7 +17,7 @@ import { buildHomeView } from './views/homeView';
 import { buildOrdersView } from './views/ordersView';
 import { buildAccountsView } from './views/accountsView';
 import { buildProfileView } from './views/profileView';
-import { buildCreateOrderModal } from '../modals/createOrderModal';
+import { buildOrderSearchModal, buildOrderReviewModal } from '../modals/createOrderModal';
 import { buildSurveyModal } from '../modals/surveyModal';
 import { buildExpenseModal } from '../modals/expenseModal';
 import { buildAdhocVisitModal } from '../modals/adhocVisitModal';
@@ -33,6 +33,7 @@ import { insertRecord, updateRecord } from '../salesforce/connection';
 
 const USER_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const sfUserCache = new Map<string, { data: { sfUserId: string; sfaUser: any; sfUserRecordId: string; isManager: boolean }; ts: number }>();
+const orderState = new Map<string, any[]>();
 
 async function resolveUser(slackUserId: string, client: any) {
   const cached = sfUserCache.get(slackUserId);
@@ -242,7 +243,16 @@ export function registerAppHome(app: App) {
   }
 
   // ─── Existing Action Handlers ───
-  app.action('sfa_create_order', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildCreateOrderModal((body as any).actions[0].value) }); } catch (e) { await notifyError(uid, client, e); } });
+  app.action('sfa_create_order', async ({ ack, body, client }) => {
+    await ack();
+    const uid = (body as any).user.id;
+    const visitId = (body as any).actions[0].value;
+    orderState.delete(uid); // fresh order
+    try {
+      const m = buildOrderSearchModal(visitId, []);
+      await client.views.open({ trigger_id: (body as any).trigger_id, view: m });
+    } catch (e) { console.error(e); }
+  });
   app.action('sfa_open_survey', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildSurveyModal((body as any).actions[0].value) }); } catch (e) { await notifyError(uid, client, e); } });
   app.action('sfa_open_expense', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildExpenseModal((body as any).actions[0].value) }); } catch (e) { await notifyError(uid, client, e); } });
   app.action('sfa_open_adhoc_visit', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildAdhocVisitModal() }); } catch (e) { await notifyError(uid, client, e); } });
@@ -324,7 +334,7 @@ export function registerAppHome(app: App) {
       await ack({ response_action: 'errors', errors: { order_visit_picker: 'Please select a visit' } });
       return;
     }
-    await ack({ response_action: 'push', view: buildCreateOrderModal(visitId) });
+    await ack({ response_action: 'push', view: buildOrderSearchModal(visitId, []) });
   });
 
   // ─── Competing Products ───
@@ -376,10 +386,49 @@ export function registerAppHome(app: App) {
     } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
   });
 
-  app.view('sfa_create_order_submit', async ({ ack, view, body, client }) => {
+  // ─── Create Order: Add Item (search → add to cart) ───
+  app.view('sfa_order_add_item', async ({ ack, view, body, client }) => {
     try {
       const visitId = view.private_metadata!;
-      const userCtx = await resolveUser((body as any).user.id, client);
+      const uid = (body as any).user.id;
+      const vals = view.state.values as any;
+      const pid = vals.order_search_product?.order_search_product?.selected_option?.value;
+      const qty = parseFloat(vals.order_search_qty?.order_search_qty?.value || '1') || 1;
+
+      let items = orderState.get(uid) || [];
+
+      if (pid) {
+        const pbId = await getStandardPricebookId();
+        const pinfo = pbId ? await getPriceForProduct(pid, pbId) : null;
+        const products = await searchProducts('');
+        const prod = products.find((p: any) => p.Id === pid);
+        items.push({
+          productId: pid,
+          name: prod?.Name || 'Product',
+          quantity: qty,
+          unitPrice: pinfo?.unitPrice || 0,
+          entryId: pinfo?.entryId || '',
+        });
+        orderState.set(uid, items);
+        const updatedModal = buildOrderSearchModal(visitId, items);
+        await ack({ response_action: 'update', view: updatedModal });
+      } else {
+        // No product entered → review and place order
+        const reviewModal = buildOrderReviewModal(visitId, items);
+        await ack({ response_action: 'update', view: reviewModal });
+      }
+    } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
+  });
+
+  // ─── Create Order: Place Order (from accumulated items) ───
+  app.view('sfa_order_place', async ({ ack, view, body, client }) => {
+    try {
+      const uid = (body as any).user.id;
+      const meta = JSON.parse(view.private_metadata || '{}');
+      const visitId = meta.visitId;
+      const items: any[] = orderState.get(uid) || meta.items || [];
+
+      const userCtx = await resolveUser(uid, client);
       if (!userCtx) { await ack({ response_action: 'errors', errors: { error: 'Session expired' } }); return; }
       const visit = await getVisitById(visitId);
       if (!visit) { await ack({ response_action: 'errors', errors: { error: 'Visit not found' } }); return; }
@@ -387,39 +436,27 @@ export function registerAppHome(app: App) {
       if (!accountId) { const s = await getStoreById(visit.Retail_Store_Custom__c); accountId = s?.Account__c || ''; }
       if (!accountId) { await ack({ response_action: 'errors', errors: { error: 'No account linked' } }); return; }
       const pbId = await getStandardPricebookId();
-      if (!pbId) { await ack({ response_action: 'errors', errors: { error: 'No pricebook found' } }); return; }
-
-      const vals = view.state.values as any;
-      const lineItems: any[] = [];
-      for (let i = 1; i <= 8; i++) {
-        const pid = vals[`order_product_${i}`]?.[`order_product_${i}`]?.selected_option?.value;
-        const qty = parseFloat(vals[`order_qty_${i}`]?.[`order_qty_${i}`]?.value || '0');
-        if (pid && !isNaN(qty) && qty > 0) {
-          const pinfo = await getPriceForProduct(pid, pbId);
-          lineItems.push({ productId: pid, quantity: qty, entryId: pinfo?.entryId || '', unitPrice: pinfo?.unitPrice || 0 });
-        }
-      }
-      if (lineItems.length === 0) { await ack({ response_action: 'errors', errors: { error: 'Add at least one product' } }); return; }
+      if (!pbId) { await ack({ response_action: 'errors', errors: { error: 'No pricebook' } }); return; }
+      if (items.length === 0) { await ack({ response_action: 'errors', errors: { error: 'No items in order' } }); return; }
 
       const orderId = await insertRecord(SOBJECTS.ORDER, {
-        AccountId: accountId,
-        Pricebook2Id: pbId,
-        Status: 'Draft',
+        AccountId: accountId, Pricebook2Id: pbId, Status: 'Draft',
         EffectiveDate: B.todayDateString(),
-        RecordTypeId: SF_CONSTANTS.ORDER_RECORD_TYPE_SECONDARY,
-        Retailer_Account__c: accountId,
-        Distributor_Account__c: SF_CONSTANTS.WD_DISTRIBUTOR_ID,
-        Visit__c: visitId,
+        ...(visitId ? { Visit__c: visitId } : {}),
       });
       let total = 0;
-      for (const li of lineItems) {
-        await insertRecord(SOBJECTS.ORDER_ITEM, { OrderId: orderId, Product2Id: li.productId, Quantity: li.quantity, UnitPrice: li.unitPrice, PricebookEntryId: li.entryId || undefined });
-        total += li.unitPrice * li.quantity;
+      for (const item of items) {
+        await insertRecord(SOBJECTS.ORDER_ITEM, {
+          OrderId: orderId, Product2Id: item.productId, Quantity: item.quantity,
+          UnitPrice: item.unitPrice, PricebookEntryId: item.entryId || undefined,
+        });
+        total += item.unitPrice * item.quantity;
       }
       await updateRecord(SOBJECTS.VISIT, visitId, { Order__c: orderId, Order_Value__c: (visit.Order_Value__c || 0) + total });
+      orderState.delete(uid);
       await ack({ response_action: 'clear' });
-      const u = await resolveUser((body as any).user.id, client);
-      if (u) await publishView(app, (body as any).user.id, client, u);
+      const u = await resolveUser(uid, client);
+      if (u) await publishView(app, uid, client, u);
     } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
   });
 

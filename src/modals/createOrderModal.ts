@@ -1,36 +1,75 @@
 import * as B from '../utils/blocks';
 
-export function buildCreateOrderModal(visitId: string, isSecondary: boolean = false): any {
-  const blocks: any[] = [
-    B.header(`:shopping_trolley: ${isSecondary ? 'Additional Order' : 'Create Order'}`),
-    B.divider(),
-  ];
+export function buildOrderSearchModal(visitId: string, currentItems: any[]): any {
+  const blocks: any[] = [];
 
-  for (let i = 1; i <= 8; i++) {
+  blocks.push(B.header(':shopping_trolley: Create Order'));
+  blocks.push(B.divider());
+
+  // Current Order Summary
+  if (currentItems.length > 0) {
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*Product ${i}*` },
+      text: { type: 'mrkdwn', text: `*Current Order (${currentItems.length} items)*` },
     });
-    blocks.push(B.externalSelect(`order_product_${i}`, `Product ${i}`, 'Search for a product...', true, 1));
-    blocks.push(B.numberInput(`order_qty_${i}`, 'Quantity', 'Enter quantity', true, i === 1 ? '1' : undefined));
-    if (i < 8) blocks.push(B.divider());
+    let total = 0;
+    for (const item of currentItems) {
+      const amt = (item.unitPrice || 0) * (item.quantity || 1);
+      total += amt;
+      blocks.push(B.section(`${item.name} — Qty: ${item.quantity} — ${B.formatCurrency(amt)}`));
+    }
+    blocks.push(B.context(`Total: ${B.formatCurrency(total)}`));
+    blocks.push(B.divider());
   }
 
-  blocks.push(B.divider());
-  blocks.push({
-    type: 'input', block_id: 'order_notes',
-    label: { type: 'plain_text', text: 'Order Notes (optional)' },
-    element: { type: 'plain_text_input', action_id: 'order_notes', multiline: true },
-    optional: true,
-  });
+  // Search
+    blocks.push(B.externalSelect('order_search_product', ':mag: Search Product', 'Type to search products...', false, 1));
+    blocks.push(B.numberInput('order_search_qty', ':1234: Quantity', 'Enter quantity', true, '1'));
+    if (currentItems.length > 0) {
+      blocks.push(B.divider());
+      blocks.push(B.context(':bulb: Click Submit with empty search to review and place your order.'));
+    }
 
   return {
     type: 'modal',
-    callback_id: 'sfa_create_order_submit',
-    title: { type: 'plain_text', text: isSecondary ? 'Additional Order' : 'Create Order' },
-    submit: { type: 'plain_text', text: 'Place Order' },
-    close: { type: 'plain_text', text: 'Cancel' },
+    callback_id: 'sfa_order_add_item',
+    title: { type: 'plain_text', text: 'Create Order' },
+    submit:     { type: 'plain_text', text: currentItems.length > 0 ? `Add More (${currentItems.length} items)` : 'Add to Order' },
+    close: { type: 'plain_text', text: currentItems.length > 0 ? 'Review & Place Order' : 'Cancel' },
     private_metadata: visitId,
+    blocks,
+  };
+}
+
+export function buildOrderReviewModal(visitId: string, items: any[]): any {
+  const blocks: any[] = [];
+  blocks.push(B.header(':white_check_mark: Review Order'));
+  blocks.push(B.divider());
+
+  let total = 0;
+  for (const item of items) {
+    const amt = (item.unitPrice || 0) * (item.quantity || 1);
+    total += amt;
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*${item.name}*\nQty: ${item.quantity} | Unit Price: ${B.formatCurrency(item.unitPrice)} | Subtotal: ${B.formatCurrency(amt)}`,
+      },
+    });
+  }
+  blocks.push(B.divider());
+  blocks.push(B.section(`*Total Amount: ${B.formatCurrency(total)}*`));
+  blocks.push(B.divider());
+  blocks.push(B.context(':information_source: Click Submit to place this order. Items cannot be modified after submission.'));
+
+  return {
+    type: 'modal',
+    callback_id: 'sfa_order_place',
+    title: { type: 'plain_text', text: 'Place Order' },
+    submit: { type: 'plain_text', text: 'Place Order' },
+    close: { type: 'plain_text', text: 'Go Back' },
+    private_metadata: JSON.stringify({ visitId, items }),
     blocks,
   };
 }
