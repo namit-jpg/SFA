@@ -8,7 +8,7 @@ import { getSFUserByEmail, getSFAUserByEmail, getSFAUserByUserId,
   getStandardPricebookId, getPriceForProduct,
   updateVisitNotes, rescheduleVisit, createCompetingProduct,
 } from '../salesforce/soql';
-import { publishView, setState, clearState } from './router';
+import { publishView, setState, setFlash, clearState } from './router';
 import { buildVisitsView } from './views/visitsView';
 import { buildVisitDetailsView } from './views/visitDetailsView';
 import { buildVisitInsightsView } from './views/visitInsightsView';
@@ -95,7 +95,13 @@ export function registerAppHome(app: App) {
   // ─── Visit List Filters ───
   app.action('sfa_filter_today', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; setState(uid, { visitFilter: 'today' }); const u = await resolveUser(uid, client); if (u) await publishView(app, uid, client, u); });
   app.action('sfa_filter_all', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; setState(uid, { visitFilter: 'all' }); const u = await resolveUser(uid, client); if (u) await publishView(app, uid, client, u); });
-  app.action('sfa_optimize_route', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; await client.chat.postEphemeral({ channel: uid, user: uid, text: ':arrows_counterclockwise: Route optimization triggered.' }); });
+  app.action('sfa_optimize_route', async ({ ack, body, client }) => {
+    await ack();
+    const uid = (body as any).user.id;
+    setFlash(uid, ':arrows_counterclockwise: Route optimization triggered.');
+    const u = await resolveUser(uid, client);
+    if (u) await publishView(app, uid, client, u);
+  });
 
   // ─── Sort Toggles ───
   app.action('sfa_toggle_visit_sort', async ({ ack, body, client }) => {
@@ -138,32 +144,40 @@ export function registerAppHome(app: App) {
   // ─── Navigate (Maps) ───
   app.action('sfa_navigate_visit', async ({ ack, body, client }) => {
     await ack();
+    const uid = (body as any).user.id;
     const visitId = (body as any).actions[0].value;
     const visit = await getVisitById(visitId);
     const addr = visit?.AccountId__r?.BillingStreet || '';
     const city = visit?.AccountId__r?.BillingCity || '';
     const query = encodeURIComponent([addr, city].filter(Boolean).join(', ') || 'store');
-    const uid = (body as any).user.id;
-    await client.chat.postEphemeral({ channel: uid, user: uid, text: `:round_pushpin: https://www.google.com/maps/search/${query}` });
+    setFlash(uid, `:round_pushpin: https://www.google.com/maps/search/${query}`);
+    const u = await resolveUser(uid, client);
+    if (u) await publishView(app, uid, client, u);
   });
 
   // ─── Call / Email ───
   app.action('sfa_open_call', async ({ ack, body, client }) => {
     await ack();
+    const uid = (body as any).user.id;
     const visitId = (body as any).actions[0].value;
     const visit = await getVisitById(visitId);
     const contact = visit?.AccountId__c ? await getAccountContact(visit.AccountId__c) : null;
     const phone = contact?.Phone__c || (contact as any)?.Phone || 'N/A';
-    await client.chat.postEphemeral({ channel: (body as any).user.id, user: (body as any).user.id, text: `:phone: ${phone}` });
+    setFlash(uid, `:phone: ${phone}`);
+    const u = await resolveUser(uid, client);
+    if (u) await publishView(app, uid, client, u);
   });
 
   app.action('sfa_open_email', async ({ ack, body, client }) => {
     await ack();
+    const uid = (body as any).user.id;
     const visitId = (body as any).actions[0].value;
     const visit = await getVisitById(visitId);
     const contact = visit?.AccountId__c ? await getAccountContact(visit.AccountId__c) : null;
     const email = contact?.Email || 'N/A';
-    await client.chat.postEphemeral({ channel: (body as any).user.id, user: (body as any).user.id, text: `:email: ${email}` });
+    setFlash(uid, `:email: ${email}`);
+    const u = await resolveUser(uid, client);
+    if (u) await publishView(app, uid, client, u);
   });
 
   // ─── Check In (Attendance) ───
@@ -179,10 +193,7 @@ export function registerAppHome(app: App) {
     if (pending) {
       await updateRecord(SOBJECTS.VISIT, pending.Id, { Check_In_Time__c: now });
     }
-    await client.chat.postEphemeral({
-      channel: uid, user: uid,
-      text: `:white_check_mark: Checked in for today.\n:calendar: ${B.formatDateTime(now)}`,
-    });
+    setFlash(uid, `:white_check_mark: Checked in for today — ${B.formatDateTime(now)}`);
     await publishView(app, uid, client, userCtx);
   });
 
@@ -191,15 +202,23 @@ export function registerAppHome(app: App) {
     await ack();
     const visitId = (body as any).actions[0].value;
     const uid = (body as any).user.id;
+    const userCtx = await resolveUser(uid, client);
     const visit = await getVisitById(visitId);
     if (!visit) return;
-    if (visit.Status__c === 'In Progress') { await client.chat.postEphemeral({ channel: uid, user: uid, text: ':warning: Already in progress.' }); return; }
-    const active = await getActiveVisit(((await resolveUser(uid, client)) || {}).sfUserId || '');
-    if (active && active.Id !== visitId) { await client.chat.postEphemeral({ channel: uid, user: uid, text: ':lock: End current visit first.' }); return; }
+    if (visit.Status__c === 'In Progress') {
+      setFlash(uid, ':warning: This visit is already in progress.');
+      if (userCtx) await publishView(app, uid, client, userCtx);
+      return;
+    }
+    const active = await getActiveVisit(userCtx?.sfUserId || '');
+    if (active && active.Id !== visitId) {
+      setFlash(uid, ':lock: Please end your current active visit before starting a new one.');
+      if (userCtx) await publishView(app, uid, client, userCtx);
+      return;
+    }
     await updateRecord(SOBJECTS.VISIT, visitId, { Status__c: VISIT_STATUS.IN_PROGRESS, ActualStartTime__c: new Date().toISOString() });
     setState(uid, { page: 'visit_details', selectedVisitId: visitId });
-    const u = await resolveUser(uid, client);
-    if (u) await publishView(app, uid, client, u);
+    if (userCtx) await publishView(app, uid, client, userCtx);
   });
 
   // ─── Visit Check Out ───
@@ -208,23 +227,25 @@ export function registerAppHome(app: App) {
     const visitId = (body as any).actions[0].value;
     const uid = (body as any).user.id;
     await updateRecord(SOBJECTS.VISIT, visitId, { Status__c: VISIT_STATUS.COMPLETED, ActualEndTime__c: new Date().toISOString() });
-    await client.chat.postEphemeral({ channel: uid, user: uid, text: ':white_check_mark: Visit completed.' });
+    setFlash(uid, ':white_check_mark: Visit completed successfully.');
     setState(uid, { page: 'visits' });
     const u = await resolveUser(uid, client);
     if (u) await publishView(app, uid, client, u);
   });
 
-  async function notifyError(client: any, uid: string, e: unknown) {
+  async function notifyError(uid: string, client: any, e: unknown) {
     console.error(e);
-    await client.chat.postEphemeral({ channel: uid, user: uid, text: ':warning: Something went wrong. Please try again.' }).catch(() => {});
+    setFlash(uid, ':warning: Something went wrong. Please try again.');
+    const u = await resolveUser(uid, client).catch(() => null);
+    if (u) await publishView(app, uid, client, u).catch(() => {});
   }
 
   // ─── Existing Action Handlers ───
-  app.action('sfa_create_order', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildCreateOrderModal((body as any).actions[0].value) }); } catch (e) { await notifyError(client, uid, e); } });
-  app.action('sfa_open_survey', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildSurveyModal((body as any).actions[0].value) }); } catch (e) { await notifyError(client, uid, e); } });
-  app.action('sfa_open_expense', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildExpenseModal((body as any).actions[0].value) }); } catch (e) { await notifyError(client, uid, e); } });
-  app.action('sfa_open_adhoc_visit', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildAdhocVisitModal() }); } catch (e) { await notifyError(client, uid, e); } });
-  app.action('sfa_open_beat_plan', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildBeatPlanModal() }); } catch (e) { await notifyError(client, uid, e); } });
+  app.action('sfa_create_order', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildCreateOrderModal((body as any).actions[0].value) }); } catch (e) { await notifyError(uid, client, e); } });
+  app.action('sfa_open_survey', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildSurveyModal((body as any).actions[0].value) }); } catch (e) { await notifyError(uid, client, e); } });
+  app.action('sfa_open_expense', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildExpenseModal((body as any).actions[0].value) }); } catch (e) { await notifyError(uid, client, e); } });
+  app.action('sfa_open_adhoc_visit', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildAdhocVisitModal() }); } catch (e) { await notifyError(uid, client, e); } });
+  app.action('sfa_open_beat_plan', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildBeatPlanModal() }); } catch (e) { await notifyError(uid, client, e); } });
 
   // ─── External Select Options (Products, Stores, Reps) ───
   const productActions: string[] = [];
@@ -272,7 +293,7 @@ export function registerAppHome(app: App) {
     const uid = (body as any).user.id;
     try {
       await client.views.open({ trigger_id: (body as any).trigger_id, view: buildOrderVisitPickerModal() });
-    } catch (e) { await notifyError(client, uid, e); }
+    } catch (e) { await notifyError(uid, client, e); }
   });
 
   app.options('order_visit_picker', async ({ ack, payload, client }: any) => {
@@ -306,7 +327,7 @@ export function registerAppHome(app: App) {
   });
 
   // ─── Competing Products ───
-  app.action('sfa_competing', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildCompetingProductsModal((body as any).actions[0].value) }); } catch (e) { await notifyError(client, uid, e); } });
+  app.action('sfa_competing', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildCompetingProductsModal((body as any).actions[0].value) }); } catch (e) { await notifyError(uid, client, e); } });
 
   // ─── Add Note ───
   app.action('sfa_open_note', async ({ ack, body, client }) => {
@@ -316,11 +337,11 @@ export function registerAppHome(app: App) {
       const visitId = (body as any).actions[0].value;
       const visit = await getVisitById(visitId);
       await client.views.open({ trigger_id: (body as any).trigger_id, view: buildVisitNotesModal(visitId, visit?.Visit_Notes__c || '') });
-    } catch (e) { await notifyError(client, uid, e); }
+    } catch (e) { await notifyError(uid, client, e); }
   });
 
   // ─── Reschedule ───
-  app.action('sfa_reschedule_visit', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildRescheduleModal((body as any).actions[0].value) }); } catch (e) { await notifyError(client, uid, e); } });
+  app.action('sfa_reschedule_visit', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildRescheduleModal((body as any).actions[0].value) }); } catch (e) { await notifyError(uid, client, e); } });
 
   // ─── Noop ───
   app.action('sfa_noop', async ({ ack }) => { await ack(); });
@@ -438,10 +459,7 @@ export function registerAppHome(app: App) {
       const retailerName = store?.Account__r?.Name || store?.Name || 'N/A';
       const visitId = await insertRecord(SOBJECTS.VISIT, { Retail_Store_Custom__c: storeId, AccountId__c: store?.Account__c || null, SFA_User__c: userCtx.sfUserId, User__c: userCtx.sfUserRecordId, Visitor__c: userCtx.sfUserRecordId, Visit_Date__c: date, PlannedDate__c: date, Status__c: VISIT_STATUS.PLANNED, Type__c: VISIT_TYPE.AD_HOC, Purpose__c: vals.adhoc_purpose?.adhoc_purpose?.selected_option?.value || 'Other' });
       await ack({ response_action: 'clear' });
-      await client.chat.postEphemeral({
-        channel: uid, user: uid,
-        text: `:white_check_mark: *Visit created successfully!*\n• *Visit #:* ${visitId}\n• *Retailer:* ${retailerName}\n• *Date:* ${date}`,
-      }).catch(() => {});
+      setFlash(uid, `:white_check_mark: Visit created! #${visitId} | ${retailerName} | ${date}`);
       const u = await resolveUser(uid, client);
       if (u) await publishView(app, uid, client, u);
     } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
@@ -467,7 +485,9 @@ export function registerAppHome(app: App) {
       }
       await ack({ response_action: 'clear' });
       if (count > 0) {
-        await client.chat.postEphemeral({ channel: uid, user: uid, text: `:white_check_mark: ${count} competing product(s) recorded.` });
+        setFlash(uid, `:white_check_mark: ${count} competing product(s) recorded.`);
+        const u = await resolveUser(uid, client);
+        if (u) await publishView(app, uid, client, u);
       }
     } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
   });
@@ -494,14 +514,14 @@ export function registerAppHome(app: App) {
       await rescheduleVisit(visitId, date, reason);
       await ack({ response_action: 'clear' });
       const uid = (body as any).user.id;
-      await client.chat.postEphemeral({ channel: uid, user: uid, text: `:white_check_mark: Visit rescheduled to ${date} (${reason}).` });
+      setFlash(uid, `:white_check_mark: Visit rescheduled to ${date} (${reason}).`);
       const u = await resolveUser(uid, client);
       if (u) await publishView(app, uid, client, u);
     } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
   });
 
   // ─── Onboarding (3-step) ───
-  app.action('sfa_open_onboarding', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildOnboardingStep1Modal() }); } catch (e) { await notifyError(client, uid, e); } });
+  app.action('sfa_open_onboarding', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildOnboardingStep1Modal() }); } catch (e) { await notifyError(uid, client, e); } });
 
   function parseViewState(values: any): Record<string, any> {
     const data: Record<string, any> = {};

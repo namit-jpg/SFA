@@ -22,6 +22,7 @@ interface AppState {
   visitFilter: 'today' | 'all';
   visitSort: 'latest' | 'oldest';
   orderSort: 'latest' | 'oldest';
+  flash?: string;
 }
 
 const state = new Map<string, AppState>();
@@ -30,6 +31,10 @@ function getState(slackUserId: string): AppState {
   const s = state.get(slackUserId);
   if (!s) { const d: AppState = { page: 'home', visitFilter: 'today', visitSort: 'latest', orderSort: 'latest' }; state.set(slackUserId, d); return d; }
   return s;
+}
+
+export function setFlash(slackUserId: string, message: string) {
+  setState(slackUserId, { flash: message });
 }
 
 export function setState(slackUserId: string, update: Partial<AppState>) {
@@ -60,6 +65,8 @@ function navBar(currentPage: Page): any {
 
 export async function publishView(app: App, slackUserId: string, client: any, userCtx: any) {
   const s = getState(slackUserId);
+  const flash = s.flash;
+  if (flash) setState(slackUserId, { flash: undefined });
   const blocks: any[] = [];
 
   try {
@@ -145,5 +152,6 @@ export async function publishView(app: App, slackUserId: string, client: any, us
   }
 
   blocks.unshift(navBar(s.page));
+  if (flash) blocks.splice(1, 0, B.context(flash));
   await client.views.publish({ user_id: slackUserId, view: { type: 'home', blocks } });
 }
