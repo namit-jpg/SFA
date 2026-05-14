@@ -48,6 +48,7 @@ export interface VisitRecord {
   Visitor__c?: string;
   Check_In_Time__c?: string;
   Check_Out_Time__c?: string;
+  CreatedDate?: string;
 }
 
 export interface AccountContact {
@@ -91,7 +92,8 @@ export async function getDailyVisits(sfaUserId: string, date: string): Promise<V
             ActualStartTime__c, ActualEndTime__c, Beat__c, Beat__r.Name,
             Retail_Store_Custom__c,
             AccountId__c, AccountId__r.Name, User__c, SFA_User__c,
-            Visit_Notes__c, Visit_Outcome__c, Order_Value__c, Total_Expense_Amount__c, Type__c, Purpose__c
+            Visit_Notes__c, Visit_Outcome__c, Order_Value__c, Total_Expense_Amount__c, Type__c, Purpose__c,
+            CreatedDate
      FROM ${SOBJECTS.VISIT}
      WHERE SFA_User__c = '${esc(sfaUserId)}' AND Visit_Date__c = ${dateClause}
      ORDER BY Planned_Start_Time__c ASC NULLS LAST`
@@ -138,7 +140,8 @@ export async function searchStores(searchTerm: string): Promise<RetailStoreRecor
   return query<RetailStoreRecord>(
     `SELECT Id, Name, Store_Code__c, Account__c, Account__r.Name
      FROM ${SOBJECTS.RETAIL_STORE}
-     WHERE Name LIKE '%${escaped}%' OR Store_Code__c LIKE '%${escaped}%'
+     WHERE (Name LIKE '%${escaped}%' OR Store_Code__c LIKE '%${escaped}%')
+       AND Account__r.RecordType.DeveloperName = 'Retailer'
      ORDER BY Name ASC LIMIT 25`
   );
 }

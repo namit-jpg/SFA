@@ -20,13 +20,15 @@ interface AppState {
   page: Page;
   selectedVisitId?: string;
   visitFilter: 'today' | 'all';
+  visitSort: 'latest' | 'oldest';
+  orderSort: 'latest' | 'oldest';
 }
 
 const state = new Map<string, AppState>();
 
 function getState(slackUserId: string): AppState {
   const s = state.get(slackUserId);
-  if (!s) { const d: AppState = { page: 'home', visitFilter: 'today' }; state.set(slackUserId, d); return d; }
+  if (!s) { const d: AppState = { page: 'home', visitFilter: 'today', visitSort: 'latest', orderSort: 'latest' }; state.set(slackUserId, d); return d; }
   return s;
 }
 
@@ -82,7 +84,7 @@ export async function publishView(app: App, slackUserId: string, client: any, us
         const storeIds = visits.map((v: any) => v.Retail_Store_Custom__c).filter(Boolean);
         const storeMap = await getStoresByIds(storeIds);
         const activeVisit = await getActiveVisit(userCtx.sfUserId);
-        blocks.push(...buildVisitsView(visits, storeMap, s.visitFilter, activeVisit?.Id || null));
+        blocks.push(...buildVisitsView(visits, storeMap, s.visitFilter, activeVisit?.Id || null, s.visitSort));
         break;
       }
       case 'visit_details': {
@@ -120,7 +122,7 @@ export async function publishView(app: App, slackUserId: string, client: any, us
         const dailyVisits = await getDailyVisits(userCtx.sfUserId, today);
         const storeIds = dailyVisits.map((v: any) => v.Retail_Store_Custom__c).filter(Boolean);
         const storeMap = await getStoresByIds(storeIds);
-        blocks.push(...buildOrdersView(dailyVisits, storeMap));
+        blocks.push(...buildOrdersView(dailyVisits, storeMap, s.orderSort));
         break;
       }
       case 'accounts': {

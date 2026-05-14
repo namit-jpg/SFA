@@ -25,6 +25,7 @@ import { buildStartVisitModal } from '../modals/startVisitModal';
 import { buildEndVisitModal } from '../modals/endVisitModal';
 import { buildOnboardingStep1Modal, buildOnboardingStep2Modal, buildOnboardingStep3Modal } from '../modals/retailerOnboardingModal';
 import { buildCompetingProductsModal, buildVisitNotesModal, buildRescheduleModal } from '../modals/competingNotesModals';
+import { buildOrderVisitPickerModal } from '../modals/orderVisitPickerModal';
 import * as B from '../utils/blocks';
 import { SOBJECTS, VISIT_STATUS, VISIT_TYPE } from '../config';
 import { insertRecord, updateRecord } from '../salesforce/connection';
@@ -95,6 +96,25 @@ export function registerAppHome(app: App) {
   app.action('sfa_filter_today', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; setState(uid, { visitFilter: 'today' }); const u = await resolveUser(uid, client); if (u) await publishView(app, uid, client, u); });
   app.action('sfa_filter_all', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; setState(uid, { visitFilter: 'all' }); const u = await resolveUser(uid, client); if (u) await publishView(app, uid, client, u); });
   app.action('sfa_optimize_route', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; await client.chat.postEphemeral({ channel: uid, user: uid, text: ':arrows_counterclockwise: Route optimization triggered.' }); });
+
+  // ─── Sort Toggles ───
+  app.action('sfa_toggle_visit_sort', async ({ ack, body, client }) => {
+    await ack();
+    const uid = (body as any).user.id;
+    const current = (body as any).actions[0].value as 'latest' | 'oldest';
+    setState(uid, { visitSort: current === 'latest' ? 'oldest' : 'latest' });
+    const u = await resolveUser(uid, client);
+    if (u) await publishView(app, uid, client, u);
+  });
+
+  app.action('sfa_toggle_order_sort', async ({ ack, body, client }) => {
+    await ack();
+    const uid = (body as any).user.id;
+    const current = (body as any).actions[0].value as 'latest' | 'oldest';
+    setState(uid, { orderSort: current === 'latest' ? 'oldest' : 'latest' });
+    const u = await resolveUser(uid, client);
+    if (u) await publishView(app, uid, client, u);
+  });
 
   // ─── Visit Detail Navigation ───
   app.action('sfa_view_details', async ({ ack, body, client }) => {
@@ -246,6 +266,45 @@ export function registerAppHome(app: App) {
     } catch { await ack({ options: [] }); }
   });
 
+  // ─── Create Order from list (visit picker → order modal) ───
+  app.action('sfa_open_order_visit_picker', async ({ ack, body, client }) => {
+    await ack();
+    const uid = (body as any).user.id;
+    try {
+      await client.views.open({ trigger_id: (body as any).trigger_id, view: buildOrderVisitPickerModal() });
+    } catch (e) { await notifyError(client, uid, e); }
+  });
+
+  app.options('order_visit_picker', async ({ ack, payload, client }: any) => {
+    try {
+      const slackUserId = payload.user?.id || payload.user;
+      const userCtx = await resolveUser(slackUserId, client);
+      if (!userCtx) { await ack({ options: [] }); return; }
+      const today = B.todayDateString();
+      const visits = await getDailyVisits(userCtx.sfUserId, today);
+      const active = visits.filter((v: any) => ['Planned', 'In Progress'].includes(v.Status__c));
+      const search = (payload.value || '').toLowerCase();
+      const filtered = search
+        ? active.filter((v: any) => v.Name?.toLowerCase().includes(search) || v.AccountId__r?.Name?.toLowerCase().includes(search))
+        : active;
+      await ack({
+        options: filtered.map((v: any) => ({
+          text: { type: 'plain_text', text: `${v.Name} — ${v.AccountId__r?.Name || 'N/A'}` },
+          value: v.Id,
+        })),
+      });
+    } catch { await ack({ options: [] }); }
+  });
+
+  app.view('sfa_pick_visit_for_order_submit', async ({ ack, view }) => {
+    const visitId = view.state.values?.order_visit_picker?.order_visit_picker?.selected_option?.value;
+    if (!visitId) {
+      await ack({ response_action: 'errors', errors: { order_visit_picker: 'Please select a visit' } });
+      return;
+    }
+    await ack({ response_action: 'push', view: buildCreateOrderModal(visitId) });
+  });
+
   // ─── Competing Products ───
   app.action('sfa_competing', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildCompetingProductsModal((body as any).actions[0].value) }); } catch (e) { await notifyError(client, uid, e); } });
 
@@ -369,16 +428,22 @@ export function registerAppHome(app: App) {
   app.view('sfa_adhoc_visit_submit', async ({ ack, view, body, client }) => {
     try {
       const vals = view.state.values as any;
-      const userCtx = await resolveUser((body as any).user.id, client);
+      const uid = (body as any).user.id;
+      const userCtx = await resolveUser(uid, client);
       if (!userCtx) { await ack({ response_action: 'errors', errors: { error: 'Session expired' } }); return; }
       const storeId = vals.adhoc_store?.adhoc_store?.selected_option?.value;
       const date = vals.adhoc_date?.adhoc_date?.selected_date;
       if (!storeId || !date) { await ack({ response_action: 'errors', errors: { error: 'Store and date required' } }); return; }
       const store = await getStoreById(storeId);
-      await insertRecord(SOBJECTS.VISIT, { Retail_Store_Custom__c: storeId, AccountId__c: store?.Account__c || null, SFA_User__c: userCtx.sfUserId, User__c: userCtx.sfUserRecordId, Visitor__c: userCtx.sfUserRecordId, Visit_Date__c: date, PlannedDate__c: date, Status__c: VISIT_STATUS.PLANNED, Type__c: VISIT_TYPE.AD_HOC, Purpose__c: vals.adhoc_purpose?.adhoc_purpose?.selected_option?.value || 'Other' });
+      const retailerName = store?.Account__r?.Name || store?.Name || 'N/A';
+      const visitId = await insertRecord(SOBJECTS.VISIT, { Retail_Store_Custom__c: storeId, AccountId__c: store?.Account__c || null, SFA_User__c: userCtx.sfUserId, User__c: userCtx.sfUserRecordId, Visitor__c: userCtx.sfUserRecordId, Visit_Date__c: date, PlannedDate__c: date, Status__c: VISIT_STATUS.PLANNED, Type__c: VISIT_TYPE.AD_HOC, Purpose__c: vals.adhoc_purpose?.adhoc_purpose?.selected_option?.value || 'Other' });
       await ack({ response_action: 'clear' });
-      const u = await resolveUser((body as any).user.id, client);
-      if (u) await publishView(app, (body as any).user.id, client, u);
+      await client.chat.postEphemeral({
+        channel: uid, user: uid,
+        text: `:white_check_mark: *Visit created successfully!*\n• *Visit #:* ${visitId}\n• *Retailer:* ${retailerName}\n• *Date:* ${date}`,
+      }).catch(() => {});
+      const u = await resolveUser(uid, client);
+      if (u) await publishView(app, uid, client, u);
     } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
   });
 
