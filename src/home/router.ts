@@ -10,7 +10,8 @@ import {
   getDailyVisits, getActiveVisit, getVisitInsights, getTodayAttendance,
   getStoresByIds, getVisitById, getStoreVisitHistory, getStoreOrders,
   getFrequentlyBoughtProducts, getAccountContact, getLastOrderSummary,
-  getStoreVisitLogs, getAllStores, getVisitSurveyResponses,
+  getStoreVisitLogs, getAllStores, getVisitSurveyResponses, getActivePromotions,
+  getVisitExpenses,
 } from '../salesforce/soql';
 import * as B from '../utils/blocks';
 
@@ -101,9 +102,13 @@ export async function publishView(app: App, slackUserId: string, client: any, us
         const storeIds = [visit.Retail_Store_Custom__c].filter(Boolean);
         const storeMap = await getStoresByIds(storeIds);
         const store = storeMap.get(visit.Retail_Store_Custom__c);
-        const contact = visit.AccountId__c ? await getAccountContact(visit.AccountId__c) : null;
-        const surveys = await getVisitSurveyResponses(s.selectedVisitId);
-        blocks.push(...buildVisitDetailsView(visit, store, contact, surveys));
+        const [contact, surveys, promotions, expenses] = await Promise.all([
+          visit.AccountId__c ? getAccountContact(visit.AccountId__c) : Promise.resolve(null),
+          getVisitSurveyResponses(s.selectedVisitId),
+          getActivePromotions(),
+          getVisitExpenses(s.selectedVisitId),
+        ]);
+        blocks.push(...buildVisitDetailsView(visit, store, contact, surveys, promotions, expenses));
         break;
       }
       case 'visit_insights': {

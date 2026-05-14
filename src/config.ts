@@ -45,6 +45,12 @@ export const SOBJECTS = {
   INVOICE_CUSTOM: 'Invoice__c',
   INVENTORY: 'Inventory__c',
   COMPETING_PRODUCT: 'Competing_Product__c',
+  PROMOTION: 'Promotion__c',
+};
+
+export const SF_CONSTANTS = {
+  WD_DISTRIBUTOR_ID: '001am00001kjEdKAAU',
+  ORDER_RECORD_TYPE_SECONDARY: '012am0000045cFFAAY',
 };
 
 export function validateConfig(): void {

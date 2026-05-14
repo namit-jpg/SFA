@@ -7,6 +7,7 @@ import { getSFUserByEmail, getSFAUserByEmail, getSFAUserByUserId,
   getPastVisits, searchProducts, getRepsList, searchStores,
   getStandardPricebookId, getPriceForProduct,
   updateVisitNotes, rescheduleVisit, createCompetingProduct,
+  getActivePromotions, getVisitExpenses,
 } from '../salesforce/soql';
 import { publishView, setState, setFlash, clearState } from './router';
 import { buildVisitsView } from './views/visitsView';
@@ -27,7 +28,7 @@ import { buildOnboardingStep1Modal, buildOnboardingStep2Modal, buildOnboardingSt
 import { buildCompetingProductsModal, buildVisitNotesModal, buildRescheduleModal } from '../modals/competingNotesModals';
 import { buildOrderVisitPickerModal } from '../modals/orderVisitPickerModal';
 import * as B from '../utils/blocks';
-import { SOBJECTS, VISIT_STATUS, VISIT_TYPE } from '../config';
+import { SOBJECTS, VISIT_STATUS, VISIT_TYPE, SF_CONSTANTS } from '../config';
 import { insertRecord, updateRecord } from '../salesforce/connection';
 
 const USER_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -400,7 +401,16 @@ export function registerAppHome(app: App) {
       }
       if (lineItems.length === 0) { await ack({ response_action: 'errors', errors: { error: 'Add at least one product' } }); return; }
 
-      const orderId = await insertRecord(SOBJECTS.ORDER, { AccountId: accountId, Pricebook2Id: pbId, Status: 'Draft', EffectiveDate: B.todayDateString() });
+      const orderId = await insertRecord(SOBJECTS.ORDER, {
+        AccountId: accountId,
+        Pricebook2Id: pbId,
+        Status: 'Draft',
+        EffectiveDate: B.todayDateString(),
+        RecordTypeId: SF_CONSTANTS.ORDER_RECORD_TYPE_SECONDARY,
+        Retailer_Account__c: accountId,
+        Distributor_Account__c: SF_CONSTANTS.WD_DISTRIBUTOR_ID,
+        Visit__c: visitId,
+      });
       let total = 0;
       for (const li of lineItems) {
         await insertRecord(SOBJECTS.ORDER_ITEM, { OrderId: orderId, Product2Id: li.productId, Quantity: li.quantity, UnitPrice: li.unitPrice, PricebookEntryId: li.entryId || undefined });
@@ -476,10 +486,14 @@ export function registerAppHome(app: App) {
       for (let i = 1; i <= 3; i++) {
         const name = vals[`comp_name_${i}`]?.[`comp_name_${i}`]?.value;
         if (!name || name.trim() === '') continue;
+        const price = parseFloat(vals[`comp_price_${i}`]?.[`comp_price_${i}`]?.value || '0') || null;
         await createCompetingProduct({
           Name: name,
           Visit_WD__c: visitId,
-          Account__c: visit?.AccountId__c || null,
+          Brand__c: vals[`comp_brand_${i}`]?.[`comp_brand_${i}`]?.value || null,
+          Price__c: price,
+          Remarks__c: vals[`comp_remarks_${i}`]?.[`comp_remarks_${i}`]?.value || null,
+          Retail_Store__c: visit?.Retail_Store_Custom__c || null,
         });
         count++;
       }

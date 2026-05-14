@@ -417,6 +417,17 @@ export async function createCompetingProduct(data: Record<string, any>): Promise
   return insertRecord(SOBJECTS.COMPETING_PRODUCT, data);
 }
 
+// ─── Active Promotions / Schemes ───
+export async function getActivePromotions(): Promise<any[]> {
+  return query<any>(
+    `SELECT Id, Name, Scheme_Type__c, Scheme_Category__c, Status__c, Start_Date__c, End_Date__c, Description__c
+     FROM ${SOBJECTS.PROMOTION}
+     WHERE Scheme_Enabled__c = true AND Scheme_Category__c = 'Secondary'
+     AND Start_Date__c <= TODAY AND End_Date__c >= TODAY
+     ORDER BY Name ASC`
+  );
+}
+
 // ─── Visit Notes ───
 export async function updateVisitNotes(visitId: string, notes: string): Promise<void> {
   return updateRecord(SOBJECTS.VISIT, visitId, { Visit_Notes__c: notes });
