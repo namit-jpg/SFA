@@ -105,5 +105,5 @@ const SOQL_DATE_LITERALS = new Set(['TODAY', 'YESTERDAY', 'TOMORROW', 'LAST_WEEK
 
 export function soqlDate(dateStr: string): string {
   if (SOQL_DATE_LITERALS.has(dateStr)) return dateStr;
-  return `'${esc(dateStr)}'`;
+  return dateStr;
 }
