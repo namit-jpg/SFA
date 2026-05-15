@@ -413,11 +413,11 @@ export function registerAppHome(app: App) {
       if (pid) {
         const pbId = await getStandardPricebookId();
         const pinfo = pbId ? await getPriceForProduct(pid, pbId) : null;
-        const products = await searchProducts('');
-        const prod = products.find((p: any) => p.Id === pid);
+        // Get product name from selected option text (avoids a full searchProducts query)
+        const optionText = vals.order_search_product?.order_search_product?.selected_option?.text?.text || 'Product';
         items.push({
           productId: pid,
-          name: prod?.Name || 'Product',
+          name: optionText,
           quantity: qty,
           unitPrice: pinfo?.unitPrice || 0,
           entryId: pinfo?.entryId || '',
@@ -433,88 +433,111 @@ export function registerAppHome(app: App) {
 
   // ─── Create Order: Place Order (from accumulated items) ───
   app.view('sfa_order_place', async ({ ack, view, body, client }) => {
-    try {
-      const uid = (body as any).user.id;
-      const meta = JSON.parse(view.private_metadata || '{}');
-      const visitId = meta.visitId;
-      const items: any[] = orderState.get(uid) || meta.items || [];
-
+    const uid = (body as any).user.id;
+    const meta = JSON.parse(view.private_metadata || '{}');
+    const visitId = meta.visitId;
+    const items: any[] = orderState.get(uid) || meta.items || [];
+    if (items.length === 0) { await ack({ response_action: 'errors', errors: { error: 'No items in cart' } }); return; }
+    await ack();
+    await afterAck(uid, client, async () => {
       const userCtx = await resolveUser(uid, client);
-      if (!userCtx) { await ack({ response_action: 'errors', errors: { error: 'Session expired' } }); return; }
+      if (!userCtx) { setFlash(uid, ':warning: Session expired. Please refresh.'); return; }
       const visit = await getVisitById(visitId);
-      if (!visit) { await ack({ response_action: 'errors', errors: { error: 'Visit not found' } }); return; }
+      if (!visit) { setFlash(uid, ':warning: Visit not found.'); return; }
       let accountId = visit.AccountId__c;
       if (!accountId) { const s = await getStoreById(visit.Retail_Store_Custom__c); accountId = s?.Account__c || ''; }
-      if (!accountId) { await ack({ response_action: 'errors', errors: { error: 'No account linked' } }); return; }
+      if (!accountId) { setFlash(uid, ':warning: No account linked to this visit.'); return; }
       const pbId = await getStandardPricebookId();
-      if (!pbId) { await ack({ response_action: 'errors', errors: { error: 'No pricebook' } }); return; }
-      if (items.length === 0) { await ack({ response_action: 'errors', errors: { error: 'No items in order' } }); return; }
+      if (!pbId) { setFlash(uid, ':warning: No pricebook found in Salesforce.'); return; }
 
       const orderId = await insertRecord(SOBJECTS.ORDER, {
-        AccountId: accountId, Pricebook2Id: pbId, Status: 'Draft',
+        AccountId: accountId,
+        Pricebook2Id: pbId,
+        Status: 'Draft',
         EffectiveDate: B.todayDateString(),
-        ...(visitId ? { Visit__c: visitId } : {}),
+        RecordTypeId: SF_CONSTANTS.ORDER_RECORD_TYPE_SECONDARY,
+        Retailer_Account__c: accountId,
+        Distributor_Account__c: SF_CONSTANTS.WD_DISTRIBUTOR_ID,
+        Visit__c: visitId,
       });
       let total = 0;
       for (const item of items) {
+        if (!item.entryId) continue;
         await insertRecord(SOBJECTS.ORDER_ITEM, {
           OrderId: orderId, Product2Id: item.productId, Quantity: item.quantity,
-          UnitPrice: item.unitPrice, PricebookEntryId: item.entryId || undefined,
+          UnitPrice: item.unitPrice, PricebookEntryId: item.entryId,
         });
         total += item.unitPrice * item.quantity;
       }
       await updateRecord(SOBJECTS.VISIT, visitId, { Order__c: orderId, Order_Value__c: (visit.Order_Value__c || 0) + total });
       orderState.delete(uid);
-      await ack({ response_action: 'clear' });
-      const u = await resolveUser(uid, client);
-      if (u) await publishView(app, uid, client, u);
-    } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
+      setFlash(uid, `:white_check_mark: Order placed! Total: *${B.formatCurrency(total)}*`);
+    });
   });
 
-  // Survey, Expense, Adhoc, Beat Plan submissions (simplified)
-  app.view('sfa_survey_submit', async ({ ack, view }) => {
+  // ─── Helper: ack-first async handler ───
+  // Pattern: ack immediately, do SF work after, show result via flash message
+  async function afterAck(uid: string, client: any, work: () => Promise<void>) {
     try {
-      const visitId = view.private_metadata!;
-      const vals = view.state.values as any;
-      const responses: any[] = [];
-      for (let i = 1; i <= 6; i++) {
-        const a = vals[`survey_q${i}`]?.[`survey_q${i}`]?.selected_option?.value;
-        if (a) responses.push({ question: `Question ${i}`, answer: a });
-      }
-      const notes = vals.survey_notes?.survey_notes?.value;
-      if (notes) responses.push({ question: 'Additional Notes', answer: notes });
-      if (responses.length === 0) { await ack({ response_action: 'errors', errors: { error: 'Answer at least one question' } }); return; }
-      for (const r of responses) await insertRecord(SOBJECTS.VISIT_SURVEY_RESPONSE, { Visit_WD__c: visitId, Question__c: r.question, Answer__c: r.answer, Survey_Type__c: vals.survey_type?.survey_type?.selected_option?.value || 'Market Survey' });
-      await ack({ response_action: 'clear' });
-    } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
+      await work();
+    } catch (e: any) {
+      console.error('[SFA]', e);
+      setFlash(uid, `:warning: ${(e as any)?.data?.message || e.message || 'Something went wrong.'}`);
+    }
+    const u = await resolveUser(uid, client).catch(() => null);
+    if (u) await publishView(app, uid, client, u).catch(() => {});
+  }
+
+  app.view('sfa_survey_submit', async ({ ack, view, body }) => {
+    const visitId = view.private_metadata!;
+    const vals = view.state.values as any;
+    const uid = (body as any).user.id;
+    const responses: any[] = [];
+    for (let i = 1; i <= 6; i++) {
+      const a = vals[`survey_q${i}`]?.[`survey_q${i}`]?.selected_option?.value;
+      if (a) responses.push({ question: `Question ${i}`, answer: a });
+    }
+    const notes = vals.survey_notes?.survey_notes?.value;
+    if (notes) responses.push({ question: 'Additional Notes', answer: notes });
+    if (responses.length === 0) { await ack({ response_action: 'errors', errors: { survey_q1: 'Answer at least one question' } }); return; }
+    await ack();
+    const surveyType = vals.survey_type?.survey_type?.selected_option?.value || 'Market Survey';
+    for (const r of responses) {
+      await insertRecord(SOBJECTS.VISIT_SURVEY_RESPONSE, { Visit_WD__c: visitId, Question__c: r.question, Answer__c: r.answer, Survey_Type__c: surveyType }).catch(console.error);
+    }
+    setFlash(uid, `:white_check_mark: Survey submitted (${responses.length} response(s)).`);
   });
 
-  app.view('sfa_expense_submit', async ({ ack, view }) => {
-    try {
-      const visitId = view.private_metadata!;
-      const vals = view.state.values as any;
-      const cat = vals.expense_category?.expense_category?.selected_option?.value || 'Miscellaneous';
-      const amt = parseFloat(vals.expense_amount?.expense_amount?.value || '0') || 0;
-      if (amt <= 0) { await ack({ response_action: 'errors', errors: { error: 'Enter amount' } }); return; }
+  app.view('sfa_expense_submit', async ({ ack, view, body, client }) => {
+    const visitId = view.private_metadata!;
+    const vals = view.state.values as any;
+    const uid = (body as any).user.id;
+    const cat = vals.expense_category?.expense_category?.selected_option?.value || 'Miscellaneous';
+    const amt = parseFloat(vals.expense_amount?.expense_amount?.value || '0') || 0;
+    if (amt <= 0) { await ack({ response_action: 'errors', errors: { expense_amount: 'Enter a valid amount greater than 0' } }); return; }
+    await ack();
+    await afterAck(uid, client, async () => {
       const catMap: Record<string, any> = { Travel: { Travel_Expense__c: amt }, Food: { Food_Expense__c: amt }, Accommodation: { Accommodation_Expense__c: amt }, Fuel: { Travel_Expense__c: amt }, Parking: { Miscellaneous_Expense__c: amt }, Miscellaneous: { Miscellaneous_Expense__c: amt } };
       await insertRecord(SOBJECTS.EXPENSE, { Name: `Exp - ${visitId}`, Visit_WD__c: visitId, Amount__c: amt, ...(catMap[cat] || {}), Description__c: vals.expense_desc?.expense_desc?.value || '', TransactionDate__c: B.todayDateString() });
       const v = await getVisitById(visitId);
       await updateRecord(SOBJECTS.VISIT, visitId, { Total_Expense_Amount__c: (v?.Total_Expense_Amount__c || 0) + amt });
-      await ack({ response_action: 'clear' });
-    } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
+      setFlash(uid, `:white_check_mark: Expense of ${B.formatCurrency(amt)} recorded.`);
+    });
   });
 
   app.view('sfa_adhoc_visit_submit', async ({ ack, view, body, client }) => {
-    try {
-      const vals = view.state.values as any;
-      const uid = (body as any).user.id;
+    const vals = view.state.values as any;
+    const uid = (body as any).user.id;
+    const storeId = vals.adhoc_store?.adhoc_store?.selected_option?.value;
+    const storeName = vals.adhoc_store?.adhoc_store?.selected_option?.text?.text || 'Store';
+    const date = vals.adhoc_date?.adhoc_date?.selected_date;
+    if (!storeId || !date) { await ack({ response_action: 'errors', errors: { adhoc_store: 'Select a store and date' } }); return; }
+    await ack();
+    await afterAck(uid, client, async () => {
       const userCtx = await resolveUser(uid, client);
-      if (!userCtx) { await ack({ response_action: 'errors', errors: { error: 'Session expired' } }); return; }
-      const storeId = vals.adhoc_store?.adhoc_store?.selected_option?.value;
-      const date = vals.adhoc_date?.adhoc_date?.selected_date;
-      if (!storeId || !date) { await ack({ response_action: 'errors', errors: { error: 'Store and date required' } }); return; }
+      if (!userCtx) { setFlash(uid, ':warning: Session expired. Please refresh.'); return; }
       const store = await getStoreById(storeId);
-      const retailerName = store?.Account__r?.Name || store?.Name || 'N/A';
+      const retailerName = store?.Account__r?.Name || store?.Name || storeName;
       const visitPayload: Record<string, any> = {
         Retail_Store_Custom__c: storeId,
         AccountId__c: store?.Account__c || null,
@@ -529,28 +552,23 @@ export function registerAppHome(app: App) {
         visitPayload.User__c = userCtx.sfUserRecordId;
         visitPayload.Visitor__c = userCtx.sfUserRecordId;
       }
-      const visitId = await insertRecord(SOBJECTS.VISIT, visitPayload);
-      await ack({ response_action: 'clear' });
+      await insertRecord(SOBJECTS.VISIT, visitPayload);
       setFlash(uid, `:white_check_mark: Visit created for *${retailerName}* on ${date}.`);
-      const u = await resolveUser(uid, client);
-      if (u) await publishView(app, uid, client, u);
-    } catch (e: any) {
-      console.error('[AdhocVisit]', e);
-      await ack({ response_action: 'errors', errors: { adhoc_store: (e as any)?.data?.message || e.message || 'Failed to create visit' } });
-    }
+    });
   });
 
   // ─── New Submissions ───
   app.view('sfa_competing_submit', async ({ ack, view, body, client }) => {
-    try {
-      const visitId = view.private_metadata!;
-      const vals = view.state.values as any;
-      const uid = (body as any).user.id;
+    const visitId = view.private_metadata!;
+    const vals = view.state.values as any;
+    const uid = (body as any).user.id;
+    await ack();
+    await afterAck(uid, client, async () => {
       const visit = await getVisitById(visitId);
       let count = 0;
       for (let i = 1; i <= 3; i++) {
-        const name = vals[`comp_name_${i}`]?.[`comp_name_${i}`]?.value;
-        if (!name || name.trim() === '') continue;
+        const name = vals[`comp_name_${i}`]?.[`comp_name_${i}`]?.value?.trim();
+        if (!name) continue;
         const price = parseFloat(vals[`comp_price_${i}`]?.[`comp_price_${i}`]?.value || '0') || null;
         await createCompetingProduct({
           Name: name,
@@ -562,41 +580,33 @@ export function registerAppHome(app: App) {
         });
         count++;
       }
-      await ack({ response_action: 'clear' });
-      if (count > 0) {
-        setFlash(uid, `:white_check_mark: ${count} competing product(s) recorded.`);
-        const u = await resolveUser(uid, client);
-        if (u) await publishView(app, uid, client, u);
-      }
-    } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
+      if (count > 0) setFlash(uid, `:white_check_mark: ${count} competing product(s) recorded.`);
+    });
   });
 
   app.view('sfa_notes_submit', async ({ ack, view, body, client }) => {
-    try {
-      const visitId = view.private_metadata!;
-      const note = (view.state.values as any).note_text?.note_text?.value || '';
+    const visitId = view.private_metadata!;
+    const note = (view.state.values as any).note_text?.note_text?.value || '';
+    const uid = (body as any).user.id;
+    await ack();
+    await afterAck(uid, client, async () => {
       await updateVisitNotes(visitId, note);
-      await ack({ response_action: 'clear' });
-      const uid = (body as any).user.id;
-      const u = await resolveUser(uid, client);
-      if (u) await publishView(app, uid, client, u);
-    } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
+      setFlash(uid, ':white_check_mark: Notes saved.');
+    });
   });
 
   app.view('sfa_reschedule_submit', async ({ ack, view, body, client }) => {
-    try {
-      const visitId = view.private_metadata!;
-      const vals = view.state.values as any;
-      const date = vals.reschedule_date?.reschedule_date?.selected_date;
-      const reason = vals.reschedule_reason?.reschedule_reason?.selected_option?.value || 'Other';
-      if (!date) { await ack({ response_action: 'errors', errors: { error: 'Select a new date' } }); return; }
+    const visitId = view.private_metadata!;
+    const vals = view.state.values as any;
+    const uid = (body as any).user.id;
+    const date = vals.reschedule_date?.reschedule_date?.selected_date;
+    const reason = vals.reschedule_reason?.reschedule_reason?.selected_option?.value || 'Other';
+    if (!date) { await ack({ response_action: 'errors', errors: { reschedule_date: 'Select a new date' } }); return; }
+    await ack();
+    await afterAck(uid, client, async () => {
       await rescheduleVisit(visitId, date, reason);
-      await ack({ response_action: 'clear' });
-      const uid = (body as any).user.id;
       setFlash(uid, `:white_check_mark: Visit rescheduled to ${date} (${reason}).`);
-      const u = await resolveUser(uid, client);
-      if (u) await publishView(app, uid, client, u);
-    } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
+    });
   });
 
   // ─── Onboarding (3-step) ───
@@ -624,26 +634,32 @@ export function registerAppHome(app: App) {
   });
 
   app.view('sfa_onboarding_step3_submit', async ({ ack, view, body, client }) => {
+    const uid = (body as any).user.id;
     const prev = JSON.parse(view.private_metadata || '{}');
     const curr = parseViewState(view.state.values);
     const data = { ...prev, ...curr };
-    try {
+    await ack();
+    await afterAck(uid, client, async () => {
       await insertRecord(SOBJECTS.PARTNER_REQUEST, {
-        First_Name__c: data.onb_first_name || '', Last_Name__c: data.onb_last_name || '', Enterprise_Name__c: data.onb_enterprise || '', Company_Name__c: data.onb_enterprise || '',
+        First_Name__c: data.onb_first_name || '', Last_Name__c: data.onb_last_name || '',
+        Enterprise_Name__c: data.onb_enterprise || '', Company_Name__c: data.onb_enterprise || '',
         Phone__c: data.onb_phone || '', Email__c: data.onb_email || '',
         ...(data.onb_year_est ? { Year_Established__c: parseInt(data.onb_year_est) } : {}),
-        Business_Type__c: data.onb_biz_type || 'Retail', Street__c: data.onb_street || '', City__c: data.onb_city || '', State__c: data.onb_state || '',
-        Postal_Code__c: data.onb_postal || '', Country__c: data.onb_country || 'India', Store_Footage_in_sqft__c: parseFloat(data.onb_store_area || '0') || null,
-        Store_Type__c: data.onb_store_type || null, Expected_Opening_date__c: data.onb_opening_date || null,
-        PAN_Card_Numer__c: data.onb_pan || '', GST_Number__c: data.onb_gst || '', Aadhar_Number__c: data.onb_aadhar || null,
-        Bank_Name__c: data.onb_bank_name || '', Bank_Account_Number__c: data.onb_bank_ac || '', IFSC_Code__c: data.onb_ifsc || '',
-        Onboarding_Stage__c: 'Submitted', Status__c: 'New',
+        Business_Type__c: data.onb_biz_type || 'Retail',
+        Street__c: data.onb_street || '', City__c: data.onb_city || '',
+        State__c: data.onb_state || '', Postal_Code__c: data.onb_postal || '',
+        Country__c: data.onb_country || 'India',
+        Store_Footage_in_sqft__c: parseFloat(data.onb_store_area || '0') || null,
+        Store_Type__c: data.onb_store_type || null,
+        Expected_Opening_date__c: data.onb_opening_date || null,
+        PAN_Card_Numer__c: data.onb_pan || '', GST_Number__c: data.onb_gst || '',
+        Aadhar_Number__c: data.onb_aadhar || null,
+        Bank_Name__c: data.onb_bank_name || '', Bank_Account_Number__c: data.onb_bank_ac || '',
+        IFSC_Code__c: data.onb_ifsc || '', Onboarding_Stage__c: 'Submitted', Status__c: 'New',
       });
-      await ack({ response_action: 'clear' });
-      sfUserCache.delete((body as any).user.id);
-      const u = await resolveUser((body as any).user.id, client);
-      if (u) await publishView(app, (body as any).user.id, client, u);
-    } catch (e: any) { console.error('[Onboarding]', e); await ack({ response_action: 'errors', errors: { error: e.message } }); }
+      sfUserCache.delete(uid);
+      setFlash(uid, ':white_check_mark: Retailer onboarding submitted successfully!');
+    });
   });
 
   app.view('sfa_noop_modal', async ({ ack }) => { await ack({ response_action: 'clear' }); });
