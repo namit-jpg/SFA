@@ -515,12 +515,29 @@ export function registerAppHome(app: App) {
       if (!storeId || !date) { await ack({ response_action: 'errors', errors: { error: 'Store and date required' } }); return; }
       const store = await getStoreById(storeId);
       const retailerName = store?.Account__r?.Name || store?.Name || 'N/A';
-      const visitId = await insertRecord(SOBJECTS.VISIT, { Retail_Store_Custom__c: storeId, AccountId__c: store?.Account__c || null, SFA_User__c: userCtx.sfUserId, User__c: userCtx.sfUserRecordId, Visitor__c: userCtx.sfUserRecordId, Visit_Date__c: date, PlannedDate__c: date, Status__c: VISIT_STATUS.PLANNED, Type__c: VISIT_TYPE.AD_HOC, Purpose__c: vals.adhoc_purpose?.adhoc_purpose?.selected_option?.value || 'Other' });
+      const visitPayload: Record<string, any> = {
+        Retail_Store_Custom__c: storeId,
+        AccountId__c: store?.Account__c || null,
+        SFA_User__c: userCtx.sfUserId,
+        Visit_Date__c: date,
+        PlannedDate__c: date,
+        Status__c: VISIT_STATUS.PLANNED,
+        Type__c: VISIT_TYPE.AD_HOC,
+        Purpose__c: vals.adhoc_purpose?.adhoc_purpose?.selected_option?.value || 'Other',
+      };
+      if (userCtx.sfUserRecordId) {
+        visitPayload.User__c = userCtx.sfUserRecordId;
+        visitPayload.Visitor__c = userCtx.sfUserRecordId;
+      }
+      const visitId = await insertRecord(SOBJECTS.VISIT, visitPayload);
       await ack({ response_action: 'clear' });
-      setFlash(uid, `:white_check_mark: Visit created! #${visitId} | ${retailerName} | ${date}`);
+      setFlash(uid, `:white_check_mark: Visit created for *${retailerName}* on ${date}.`);
       const u = await resolveUser(uid, client);
       if (u) await publishView(app, uid, client, u);
-    } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
+    } catch (e: any) {
+      console.error('[AdhocVisit]', e);
+      await ack({ response_action: 'errors', errors: { adhoc_store: (e as any)?.data?.message || e.message || 'Failed to create visit' } });
+    }
   });
 
   // ─── New Submissions ───
@@ -613,7 +630,8 @@ export function registerAppHome(app: App) {
     try {
       await insertRecord(SOBJECTS.PARTNER_REQUEST, {
         First_Name__c: data.onb_first_name || '', Last_Name__c: data.onb_last_name || '', Enterprise_Name__c: data.onb_enterprise || '', Company_Name__c: data.onb_enterprise || '',
-        Phone__c: data.onb_phone || '', Email__c: data.onb_email || '', Year_Established__c: parseInt(data.onb_year_est || '0') || null,
+        Phone__c: data.onb_phone || '', Email__c: data.onb_email || '',
+        ...(data.onb_year_est ? { Year_Established__c: parseInt(data.onb_year_est) } : {}),
         Business_Type__c: data.onb_biz_type || 'Retail', Street__c: data.onb_street || '', City__c: data.onb_city || '', State__c: data.onb_state || '',
         Postal_Code__c: data.onb_postal || '', Country__c: data.onb_country || 'India', Store_Footage_in_sqft__c: parseFloat(data.onb_store_area || '0') || null,
         Store_Type__c: data.onb_store_type || null, Expected_Opening_date__c: data.onb_opening_date || null,
