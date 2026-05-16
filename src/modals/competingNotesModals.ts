@@ -70,8 +70,8 @@ export function buildRescheduleModal(visitId: string): any {
       B.datePicker('reschedule_date', 'New Date', 'Select date'),
       B.staticSelect('reschedule_reason', 'Reason', [
         B.option('Customer Unavailable', 'Customer Unavailable'),
-        B.option('Store Closed', 'Store Closed'),
-        B.option('Emergency', 'Emergency'),
+        B.option('Outlet Closed', 'Outlet Closed'),
+        B.option('Travel Issue', 'Travel Issue'),
         B.option('Other', 'Other'),
       ], 'Select reason'),
     ],

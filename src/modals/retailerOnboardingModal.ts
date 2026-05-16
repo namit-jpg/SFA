@@ -20,8 +20,8 @@ export function buildOnboardingStep1Modal(): any {
       B.textInput('onb_year_est', 'Year Established', 'e.g. 2015', true),
       B.divider(),
       B.staticSelect('onb_biz_type', 'Business Type', [
-        B.option('Retail', 'Retail'), B.option('Wholesale', 'Wholesale'),
-        B.option('Distributor', 'Distributor'), B.option('Other', 'Other'),
+        B.option('Individual', 'Individual'), B.option('Partnership', 'Partnership'),
+        B.option('Private', 'Private'), B.option('Public', 'Public'), B.option('Other', 'Other'),
       ], 'Select type'),
     ],
   };
@@ -38,8 +38,8 @@ export function buildOnboardingStep2Modal(existingData?: string): any {
     B.textInput('onb_country', 'Country', 'India'),
     B.textInput('onb_store_area', 'Store Area (sq ft)', 'e.g. 500', true),
     B.staticSelect('onb_store_type', 'Store Type', [
-      B.option('Standalone', 'Standalone'), B.option('Mall', 'Mall'),
-      B.option('Market', 'Market'), B.option('Other', 'Other'),
+      B.option('Regular Store', 'Regular Store'), B.option('Flagship Store', 'Flagship Store'),
+      B.option('Virtual Store', 'Virtual Store'), B.option('Van Store', 'Van Store'),
     ], 'Select store type', true),
     B.divider(),
     B.textInput('onb_opening_date', 'Expected Opening Date (YYYY-MM-DD)', '2026-06-01', true),

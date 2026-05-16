@@ -314,7 +314,7 @@ export function registerAppHome(app: App) {
       if (!userCtx) { await ack({ options: [] }); return; }
       const today = B.todayDateString();
       const visits = await getDailyVisits(userCtx.sfUserId, today);
-      const active = visits.filter((v: any) => ['Planned', 'In Progress'].includes(v.Status__c));
+      const active = visits.filter((v: any) => [VISIT_STATUS.PLANNED, VISIT_STATUS.IN_PROGRESS].includes(v.Status__c));
       const search = (payload.value || '').toLowerCase();
       const filtered = search
         ? active.filter((v: any) => v.Name?.toLowerCase().includes(search) || v.AccountId__r?.Name?.toLowerCase().includes(search))
@@ -378,7 +378,7 @@ export function registerAppHome(app: App) {
       const visitId = view.private_metadata!;
       const vals = view.state.values;
       const reason = (vals as any).end_reason?.end_reason?.selected_option?.value;
-      const status = reason ? 'Not Visited' : VISIT_STATUS.COMPLETED;
+      const status = reason ? VISIT_STATUS.CANCELLED : VISIT_STATUS.COMPLETED;
       await updateRecord(SOBJECTS.VISIT, visitId, { Status__c: status, ActualEndTime__c: new Date().toISOString(), Visit_Outcome__c: (vals as any).end_notes?.end_notes?.value || '', Not_Visited_Reason__c: reason || null });
       await ack({ response_action: 'clear' });
       const u = await resolveUser((body as any).user.id, client);
@@ -501,7 +501,7 @@ export function registerAppHome(app: App) {
     if (notes) responses.push({ question: 'Additional Notes', answer: notes });
     if (responses.length === 0) { await ack({ response_action: 'errors', errors: { survey_q1: 'Answer at least one question' } }); return; }
     await ack();
-    const surveyType = vals.survey_type?.survey_type?.selected_option?.value || 'Market Survey';
+    const surveyType = vals.survey_type?.survey_type?.selected_option?.value || 'Retailer Feedback';
     for (const r of responses) {
       await insertRecord(SOBJECTS.VISIT_SURVEY_RESPONSE, { Visit_WD__c: visitId, Question__c: r.question, Answer__c: r.answer, Survey_Type__c: surveyType }).catch(console.error);
     }
@@ -546,7 +546,7 @@ export function registerAppHome(app: App) {
         PlannedDate__c: date,
         Status__c: VISIT_STATUS.PLANNED,
         Type__c: VISIT_TYPE.AD_HOC,
-        Purpose__c: vals.adhoc_purpose?.adhoc_purpose?.selected_option?.value || 'Other',
+        Purpose__c: vals.adhoc_purpose?.adhoc_purpose?.selected_option?.value || 'Order Taking',
       };
       if (userCtx.sfUserRecordId) {
         visitPayload.User__c = userCtx.sfUserRecordId;
@@ -565,6 +565,11 @@ export function registerAppHome(app: App) {
     await ack();
     await afterAck(uid, client, async () => {
       const visit = await getVisitById(visitId);
+      let accountId = visit?.AccountId__c || null;
+      if (!accountId && visit?.Retail_Store_Custom__c) {
+        const store = await getStoreById(visit.Retail_Store_Custom__c);
+        accountId = store?.Account__c || null;
+      }
       let count = 0;
       for (let i = 1; i <= 3; i++) {
         const name = vals[`comp_name_${i}`]?.[`comp_name_${i}`]?.value?.trim();
@@ -576,7 +581,7 @@ export function registerAppHome(app: App) {
           Brand__c: vals[`comp_brand_${i}`]?.[`comp_brand_${i}`]?.value || null,
           Price__c: price,
           Remarks__c: vals[`comp_remarks_${i}`]?.[`comp_remarks_${i}`]?.value || null,
-          Retail_Store__c: visit?.Retail_Store_Custom__c || null,
+          Retail_Store__c: accountId,
         });
         count++;
       }
@@ -645,7 +650,7 @@ export function registerAppHome(app: App) {
         Enterprise_Name__c: data.onb_enterprise || '', Company_Name__c: data.onb_enterprise || '',
         Phone__c: data.onb_phone || '', Email__c: data.onb_email || '',
         ...(data.onb_year_est ? { Year_Established__c: parseInt(data.onb_year_est) } : {}),
-        Business_Type__c: data.onb_biz_type || 'Retail',
+        Business_Type__c: data.onb_biz_type || 'Individual',
         Street__c: data.onb_street || '', City__c: data.onb_city || '',
         State__c: data.onb_state || '', Postal_Code__c: data.onb_postal || '',
         Country__c: data.onb_country || 'India',
@@ -655,7 +660,7 @@ export function registerAppHome(app: App) {
         PAN_Card_Numer__c: data.onb_pan || '', GST_Number__c: data.onb_gst || '',
         Aadhar_Number__c: data.onb_aadhar || null,
         Bank_Name__c: data.onb_bank_name || '', Bank_Account_Number__c: data.onb_bank_ac || '',
-        IFSC_Code__c: data.onb_ifsc || '', Onboarding_Stage__c: 'Submitted', Status__c: 'New',
+        IFSC_Code__c: data.onb_ifsc || '', Onboarding_Stage__c: 'Submitted', Status__c: 'Submitted',
       });
       sfUserCache.delete(uid);
       setFlash(uid, ':white_check_mark: Retailer onboarding submitted successfully!');

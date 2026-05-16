@@ -18,8 +18,9 @@ export function buildSurveyModal(visitId: string): any {
     'survey_type',
     'Survey Type',
     [
-      B.option('Market Survey', 'Market Survey'),
       B.option('Retailer Feedback', 'Retailer Feedback'),
+      B.option('Market Survey', 'Market Survey'),
+      B.option('Competitor Info', 'Competitor Info'),
     ],
     'Select survey type'
   ),

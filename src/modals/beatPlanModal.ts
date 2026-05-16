@@ -12,7 +12,7 @@ export function buildBeatPlanModal(): any {
       B.staticSelect(
         'beat_type',
         'Beat Type',
-        [B.option('Daily', 'Daily'), B.option('Weekly', 'Weekly'), B.option('Ad-hoc', 'Ad-hoc')],
+        [B.option('Urban', 'Urban'), B.option('Semi Urban', 'Semi Urban'), B.option('Rural', 'Rural')],
         'Select beat type'
       ),
       B.multiExternalSelect('beat_reps', ':bust_in_silhouette: Assign Reps', 'Search for reps...', false, 1),

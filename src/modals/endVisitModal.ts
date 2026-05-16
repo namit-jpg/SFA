@@ -33,9 +33,9 @@ export function buildEndVisitModal(visit: VisitRecord, store: RetailStoreRecord 
           type: 'static_select',
           action_id: 'end_reason',
           options: [
-            { text: { type: 'plain_text', text: 'Store closed' }, value: 'Store closed' },
-            { text: { type: 'plain_text', text: 'Manager unavailable' }, value: 'Manager unavailable' },
-            { text: { type: 'plain_text', text: 'Stock not needed' }, value: 'Stock not needed' },
+            { text: { type: 'plain_text', text: 'Outlet Closed' }, value: 'Outlet Closed' },
+            { text: { type: 'plain_text', text: 'Customer Unavailable' }, value: 'Customer Unavailable' },
+            { text: { type: 'plain_text', text: 'Travel Issue' }, value: 'Travel Issue' },
             { text: { type: 'plain_text', text: 'Other' }, value: 'Other' },
           ],
           placeholder: { type: 'plain_text', text: 'Select reason...' },

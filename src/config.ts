@@ -74,7 +74,7 @@ export const VISIT_STATUS = {
   PLANNED: 'Planned',
   IN_PROGRESS: 'In Progress',
   COMPLETED: 'Completed',
-  NOT_VISITED: 'Not Visited',
+  CANCELLED: 'Cancelled',
 } as const;
 
 export const VISIT_TYPE = {

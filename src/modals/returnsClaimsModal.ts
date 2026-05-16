@@ -20,9 +20,7 @@ export function buildReturnModal(visitId: string): any {
       B.textInput('return_reason_2', 'Reason', 'e.g. Expired', true),
       B.divider(),
       B.staticSelect('return_type', 'Return Type', [
-        B.option('Damaged', 'Damaged'), B.option('Expired', 'Expired'),
-        B.option('Wrong Item', 'Wrong Item'), B.option('Excess Quantity', 'Excess Quantity'),
-        B.option('Other', 'Other'),
+        B.option('Primary', 'Primary'), B.option('Secondary', 'Secondary'),
       ], 'Select type'),
       B.divider(),
       {
@@ -47,10 +45,10 @@ export function buildClaimModal(visitId: string): any {
       B.header(':memo: File a Claim'),
       B.divider(),
       B.staticSelect('claim_type', 'Claim Type', [
-        B.option('Shortage', 'Shortage'), B.option('Damage', 'Damage'),
-        B.option('Scheme Not Applied', 'Scheme Not Applied'),
-        B.option('Price Discrepancy', 'Price Discrepancy'),
-        B.option('Other', 'Other'),
+        B.option('Scheme Claims', 'Scheme Claims'),
+        B.option('Purchase Return Claims', 'Purchase Return Claims'),
+        B.option('Sales Return Claims', 'Sales Return Claims'),
+        B.option('Marketing Support Claims', 'Marketing Support Claims'),
       ], 'Select claim type'),
       B.numberInput('claim_amount', ':moneybag: Claim Amount (INR)', 'Enter amount', false, '0'),
       B.divider(),
