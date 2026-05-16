@@ -5,7 +5,7 @@ export function buildVisitIntelModal(
 ): any {
   const blocks: any[] = [];
 
-  blocks.push(B.header(`:bulb: Store Insights — ${storeName}`));
+  blocks.push(B.header(`:bulb: Store Insights - ${storeName}`));
   blocks.push(B.divider());
 
   // Previous Visits

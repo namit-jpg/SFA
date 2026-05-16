@@ -31,7 +31,7 @@ export function buildRepHomeView(
 
   blocks.push(B.header(`:wave: Hey ${sfaUserName}, welcome to SFA`));
 
-  // ─── Visit Insights ───
+  // Visit Insights
   if (insights) {
     const lines = [
       `*:chart_with_upwards_trend: Visit Insights*`,
@@ -45,7 +45,7 @@ export function buildRepHomeView(
   blocks.push(B.context(`:calendar: ${B.formatDate(today)} | ${weeklyStats.completed}/${weeklyStats.total} visits this week`));
   blocks.push(B.divider());
 
-  // ─── Quick Actions Row ───
+  // Quick Actions Row
   const quickActions: any[] = [];
 
   if (!attendanceMarked) {
@@ -56,7 +56,7 @@ export function buildRepHomeView(
   blocks.push(B.actions(...quickActions));
   blocks.push(B.divider());
 
-  // ─── Active Visit Section ───
+  // Active Visit Section
   if (activeVisit) {
     const name = storeName(activeVisit);
     const startTime = activeVisit.ActualStartTime__c;
@@ -79,7 +79,7 @@ export function buildRepHomeView(
     blocks.push(B.divider());
   }
 
-  // ─── Today's Plan ───
+  // Today's Plan
   const pendingToday = todayVisits.filter(v => v.Status__c !== 'Completed');
   const completedToday = todayVisits.filter(v => v.Status__c === 'Completed');
 

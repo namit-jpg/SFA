@@ -8,7 +8,7 @@ export function buildOnboardingStep1Modal(): any {
     submit: { type: 'plain_text', text: 'Next' },
     close: { type: 'plain_text', text: 'Cancel' },
     blocks: [
-      B.header(':new: Retailer Onboarding — Step 1/3'),
+      B.header(':new: Retailer Onboarding - Step 1/3'),
       B.context('Business & Contact Information'),
       B.divider(),
       B.textInput('onb_first_name', 'First Name', 'First name'),
@@ -29,7 +29,7 @@ export function buildOnboardingStep1Modal(): any {
 
 export function buildOnboardingStep2Modal(existingData?: string): any {
   const blocks: any[] = [
-    B.header(':house: Step 2/3 — Store Details'),
+    B.header(':house: Step 2/3 - Store Details'),
     B.divider(),
     B.textInput('onb_street', 'Street Address', '123 Main St'),
     B.textInput('onb_city', 'City', 'Mumbai'),
@@ -56,7 +56,7 @@ export function buildOnboardingStep2Modal(existingData?: string): any {
 
 export function buildOnboardingStep3Modal(existingData?: string): any {
   const blocks: any[] = [
-    B.header(':page_facing_up: Step 3/3 — Documents & Banking'),
+    B.header(':page_facing_up: Step 3/3 - Documents & Banking'),
     B.divider(),
     B.textInput('onb_pan', 'PAN Card Number', 'ABCDE1234F'),
     B.textInput('onb_gst', 'GST Number', '22AAAAA0000A1Z5'),

@@ -18,7 +18,7 @@ app.error(async (error) => { console.error('[Bolt]', error); });
 (async () => {
   validateConfig();
   console.log('═══════════════════════════════════════');
-  console.log('  SFA Slack Bot v2 — Starting...');
+  console.log('  SFA Slack Bot v2 - Starting...');
   console.log('  Environment:', config.nodeEnv);
   console.log('  Mode: Socket Mode');
   console.log('═══════════════════════════════════════');

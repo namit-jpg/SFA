@@ -8,14 +8,14 @@ export function buildVisitsView(
 
   blocks.push(B.header('Visits'));
 
-  // ─── Top action buttons ───
+  // Top action buttons
   blocks.push(B.actions(
     B.button(':heavy_plus_sign: Create Visit', 'sfa_open_adhoc_visit', undefined, 'primary'),
     B.button(':package: Create Order', 'sfa_open_order_visit_picker', undefined),
   ));
   blocks.push(B.divider());
 
-  // ─── Filter + sort controls ───
+  // Filter + sort controls
   blocks.push(B.actions(
     B.button("Today's Visits", 'sfa_filter_today', undefined, filter === 'today' ? 'primary' : undefined),
     B.button('All Visits', 'sfa_filter_all', undefined, filter === 'all' ? 'primary' : undefined),
@@ -40,7 +40,7 @@ export function buildVisitsView(
     return blocks;
   }
 
-  blocks.push(B.context(`${sorted.length} visit(s) — sorted by ${sort === 'latest' ? 'newest first' : 'oldest first'}`));
+  blocks.push(B.context(`${sorted.length} visit(s) - sorted by ${sort === 'latest' ? 'newest first' : 'oldest first'}`));
   blocks.push(B.divider());
 
   for (const visit of sorted) {
@@ -55,7 +55,7 @@ export function buildVisitsView(
       text: {
         type: 'mrkdwn',
         text: [
-          `*${visit.Name}* — *${storeName}*`,
+          `*${visit.Name}* - *${storeName}*`,
           `_Planned: ${visit.PlannedDate__c || visit.Visit_Date__c || 'N/A'}_${createdAt ? `  |  Created: ${createdAt}` : ''}`,
           `${statusEmoji} *${visit.Status__c?.toUpperCase() || 'N/A'}*`,
         ].join('\n'),

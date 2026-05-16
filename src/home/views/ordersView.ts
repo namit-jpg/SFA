@@ -7,7 +7,7 @@ export function buildOrdersView(
 
   blocks.push(B.header('Orders'));
 
-  // ─── Top action buttons ───
+  // Top action buttons
   blocks.push(B.actions(
     B.button(':package: Create Order', 'sfa_open_order_visit_picker', undefined, 'primary'),
     B.button(':heavy_plus_sign: Create Visit', 'sfa_open_adhoc_visit', undefined),
@@ -21,7 +21,7 @@ export function buildOrdersView(
     return blocks;
   }
 
-  // ─── Sort control ───
+  // Sort control
   blocks.push(B.actions(
     B.button(sort === 'latest' ? ':arrow_down: Latest First' : ':arrow_up: Oldest First', 'sfa_toggle_order_sort', sort),
   ));
@@ -32,7 +32,7 @@ export function buildOrdersView(
     return sort === 'latest' ? dateB - dateA : dateA - dateB;
   });
 
-  blocks.push(B.context(`${sorted.length} order(s) — sorted by ${sort === 'latest' ? 'newest first' : 'oldest first'}`));
+  blocks.push(B.context(`${sorted.length} order(s) - sorted by ${sort === 'latest' ? 'newest first' : 'oldest first'}`));
   blocks.push(B.divider());
 
   for (const v of sorted) {

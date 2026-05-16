@@ -13,7 +13,7 @@ export function buildOrderSearchModal(visitId: string, currentItems: any[]): any
     for (const item of currentItems) {
       const amt = (item.unitPrice || 0) * (item.quantity || 1);
       total += amt;
-      blocks.push(B.section(`${item.name} — Qty: ${item.quantity} — ${B.formatCurrency(amt)}`));
+      blocks.push(B.section(`${item.name} - Qty: ${item.quantity} - ${B.formatCurrency(amt)}`));
     }
     blocks.push(B.context(`Total: ${B.formatCurrency(total)}`));
     blocks.push(B.divider());
@@ -28,7 +28,7 @@ export function buildOrderSearchModal(visitId: string, currentItems: any[]): any
     blocks.push(B.divider());
     blocks.push(B.staticSelect('order_action', 'What would you like to do?', [
       B.option(':heavy_plus_sign: Add to cart & continue adding', 'add'),
-      B.option(':white_check_mark: Review & place order — done adding', 'review'),
+      B.option(':white_check_mark: Review & place order - done adding', 'review'),
     ], 'Choose action'));
   }
 

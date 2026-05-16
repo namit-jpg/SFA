@@ -4,7 +4,7 @@ export function buildPastVisitsListView(
   visits: any[], storeMap: Map<string, any>, storeName: string
 ): any {
   const blocks: any[] = [];
-  blocks.push(B.header(`:calendar: Past Visits — ${storeName}`));
+  blocks.push(B.header(`:calendar: Past Visits - ${storeName}`));
   blocks.push(B.context(`${visits.length} completed visit(s)`));
   blocks.push(B.divider());
 
@@ -19,7 +19,7 @@ export function buildPastVisitsListView(
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `:white_check_mark: *${B.formatDate(v.Visit_Date__c)}*${loc ? ` — ${loc}` : ''}\nOrder: ${B.formatCurrency(v.Order_Value__c || 0)} | Expenses: ${B.formatCurrency(v.Total_Expense_Amount__c || 0)}${v.Visit_Outcome__c ? `\n_${v.Visit_Outcome__c}_` : ''}`,
+        text: `:white_check_mark: *${B.formatDate(v.Visit_Date__c)}*${loc ? ` - ${loc}` : ''}\nOrder: ${B.formatCurrency(v.Order_Value__c || 0)} | Expenses: ${B.formatCurrency(v.Total_Expense_Amount__c || 0)}${v.Visit_Outcome__c ? `\n_${v.Visit_Outcome__c}_` : ''}`,
       },
     });
     blocks.push(B.divider());
@@ -37,7 +37,7 @@ export function buildPastOrdersListView(
   orders: any[], storeName: string
 ): any {
   const blocks: any[] = [];
-  blocks.push(B.header(`:package: Past Orders — ${storeName}`));
+  blocks.push(B.header(`:package: Past Orders - ${storeName}`));
   blocks.push(B.context(`${orders.length} order(s)`));
   blocks.push(B.divider());
 

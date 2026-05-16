@@ -325,7 +325,7 @@ export async function insertPartnerRequest(data: Record<string, any>): Promise<s
 
 export { esc, escLike, soqlDate, insertRecord };
 
-// ─── Visit Intelligence ───
+// Visit Intelligence
 export async function getStoreVisitHistory(storeId: string, limit: number = 5): Promise<any[]> {
   return query<any>(
     `SELECT Id, Name, Visit_Date__c, Status__c, Order_Value__c, Visit_Outcome__c
@@ -355,7 +355,7 @@ export async function getFrequentlyBoughtProducts(accountId: string, limit: numb
   );
 }
 
-// ─── Stock Check ───
+// Stock Check
 export async function getProductStock(productId: string): Promise<number> {
   const r = await queryOne<any>(
     `SELECT SUM(Quantity_Available__c) total FROM ${SOBJECTS.INVENTORY} WHERE Product__c = '${esc(productId)}' AND Is_Active__c = true`
@@ -363,7 +363,7 @@ export async function getProductStock(productId: string): Promise<number> {
   return r?.total || 0;
 }
 
-// ─── Invoice Processing ───
+// Invoice Processing
 export async function getVisitOrdersForInvoice(visitId: string): Promise<any[]> {
   return query<any>(
     `SELECT Id, OrderNumber, Status, TotalAmount, AccountId
@@ -382,14 +382,14 @@ export async function getOrderItemsWithStock(orderId: string): Promise<any[]> {
   );
 }
 
-// ─── Account Contact ───
+// Account Contact
 export async function getAccountContact(accountId: string): Promise<AccountContact | null> {
   return queryOne<any>(
     `SELECT Name, Phone, Email FROM Contact WHERE AccountId = '${esc(accountId)}' LIMIT 1`
   );
 }
 
-// ─── Visit Insights 360 ───
+// Visit Insights 360
 export async function getLastOrderSummary(accountId: string): Promise<any | null> {
   const order = await queryOne<any>(
     `SELECT Id, OrderNumber, TotalAmount, EffectiveDate FROM Order
@@ -412,12 +412,12 @@ export async function getStoreVisitLogs(storeId: string, limit: number = 10): Pr
   );
 }
 
-// ─── Competing Products ───
+// Competing Products
 export async function createCompetingProduct(data: Record<string, any>): Promise<string> {
   return insertRecord(SOBJECTS.COMPETING_PRODUCT, data);
 }
 
-// ─── Active Promotions / Schemes ───
+// Active Promotions / Schemes
 export async function getActivePromotions(): Promise<any[]> {
   return query<any>(
     `SELECT Id, Name, Scheme_Type__c, Scheme_Category__c, Status__c, Start_Date__c, End_Date__c, Description__c
@@ -428,7 +428,7 @@ export async function getActivePromotions(): Promise<any[]> {
   );
 }
 
-// ─── Visit Notes ───
+// Visit Notes
 export async function updateVisitNotes(visitId: string, notes: string): Promise<void> {
   return updateRecord(SOBJECTS.VISIT, visitId, { Visit_Notes__c: notes });
 }

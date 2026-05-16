@@ -29,7 +29,7 @@ export function buildVisitInsightsView(
     const name = p.Product2?.Name || p.Name || 'Product';
     const qty = p.totalQty || p.Quantity || 1;
     blocks.push(B.section(
-      `*${name}* — ${B.formatCurrency(0)} — Min Order Qty (Sec): ${qty}`
+      `*${name}* - ${B.formatCurrency(0)} - Min Order Qty (Sec): ${qty}`
     ));
   }
   blocks.push(B.divider());
@@ -48,7 +48,7 @@ export function buildVisitInsightsView(
         const iprice = item.UnitPrice || 0;
         orderTotal += iprice * iqty;
         blocks.push(B.section(
-          `*${iname}* — Qty: ${iqty} — ${B.formatCurrency(iprice)}`
+          `*${iname}* - Qty: ${iqty} - ${B.formatCurrency(iprice)}`
         ));
       }
     }

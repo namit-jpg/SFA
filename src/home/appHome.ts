@@ -57,7 +57,7 @@ async function resolveUser(slackUserId: string, client: any) {
 }
 
 export function registerAppHome(app: App) {
-  // ─── App Home Opened ───
+  // App Home Opened
   app.event('app_home_opened', async ({ event, client }) => {
     const userCtx = await resolveUser(event.user, client);
     if (!userCtx) {
@@ -67,7 +67,7 @@ export function registerAppHome(app: App) {
     await publishView(app, event.user, client, userCtx);
   });
 
-  // ─── Navigation ───
+  // Navigation
   const navActions: Record<string, any> = {
     sfa_nav_home: { page: 'home' },
     sfa_nav_visits: { page: 'visits' },
@@ -94,7 +94,7 @@ export function registerAppHome(app: App) {
     if (userCtx) await publishView(app, uid, client, userCtx);
   });
 
-  // ─── Visit List Filters ───
+  // Visit List Filters
   app.action('sfa_filter_today', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; setState(uid, { visitFilter: 'today' }); const u = await resolveUser(uid, client); if (u) await publishView(app, uid, client, u); });
   app.action('sfa_filter_all', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; setState(uid, { visitFilter: 'all' }); const u = await resolveUser(uid, client); if (u) await publishView(app, uid, client, u); });
   app.action('sfa_optimize_route', async ({ ack, body, client }) => {
@@ -105,7 +105,7 @@ export function registerAppHome(app: App) {
     if (u) await publishView(app, uid, client, u);
   });
 
-  // ─── Sort Toggles ───
+  // Sort Toggles
   app.action('sfa_toggle_visit_sort', async ({ ack, body, client }) => {
     await ack();
     const uid = (body as any).user.id;
@@ -124,7 +124,7 @@ export function registerAppHome(app: App) {
     if (u) await publishView(app, uid, client, u);
   });
 
-  // ─── Visit Detail Navigation ───
+  // Visit Detail Navigation
   app.action('sfa_view_details', async ({ ack, body, client }) => {
     await ack();
     const uid = (body as any).user.id;
@@ -143,7 +143,7 @@ export function registerAppHome(app: App) {
     if (u) await publishView(app, uid, client, u);
   });
 
-  // ─── Navigate (Maps) ───
+  // Navigate (Maps)
   app.action('sfa_navigate_visit', async ({ ack, body, client }) => {
     await ack();
     const uid = (body as any).user.id;
@@ -157,7 +157,7 @@ export function registerAppHome(app: App) {
     if (u) await publishView(app, uid, client, u);
   });
 
-  // ─── Call / Email ───
+  // Call / Email
   app.action('sfa_open_call', async ({ ack, body, client }) => {
     await ack();
     const uid = (body as any).user.id;
@@ -182,7 +182,7 @@ export function registerAppHome(app: App) {
     if (u) await publishView(app, uid, client, u);
   });
 
-  // ─── Check In (Attendance) ───
+  // Check In (Attendance)
   app.action('sfa_check_in_attendance', async ({ ack, body, client }) => {
     await ack();
     const uid = (body as any).user.id;
@@ -195,11 +195,11 @@ export function registerAppHome(app: App) {
     if (pending) {
       await updateRecord(SOBJECTS.VISIT, pending.Id, { Check_In_Time__c: now });
     }
-    setFlash(uid, `:white_check_mark: Checked in for today — ${B.formatDateTime(now)}`);
+    setFlash(uid, `:white_check_mark: Checked in for today - ${B.formatDateTime(now)}`);
     await publishView(app, uid, client, userCtx);
   });
 
-  // ─── Visit Check In ───
+  // Visit Check In
   app.action('sfa_visit_check_in', async ({ ack, body, client }) => {
     await ack();
     const visitId = (body as any).actions[0].value;
@@ -223,7 +223,7 @@ export function registerAppHome(app: App) {
     if (userCtx) await publishView(app, uid, client, userCtx);
   });
 
-  // ─── Visit Check Out ───
+  // Visit Check Out
   app.action('sfa_visit_check_out', async ({ ack, body, client }) => {
     await ack();
     const visitId = (body as any).actions[0].value;
@@ -242,7 +242,7 @@ export function registerAppHome(app: App) {
     if (u) await publishView(app, uid, client, u).catch(() => {});
   }
 
-  // ─── Existing Action Handlers ───
+  // Existing Action Handlers
   app.action('sfa_create_order', async ({ ack, body, client }) => {
     await ack();
     const uid = (body as any).user.id;
@@ -258,7 +258,7 @@ export function registerAppHome(app: App) {
   app.action('sfa_open_adhoc_visit', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildAdhocVisitModal() }); } catch (e) { await notifyError(uid, client, e); } });
   app.action('sfa_open_beat_plan', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildBeatPlanModal() }); } catch (e) { await notifyError(uid, client, e); } });
 
-  // ─── External Select Options (Products, Stores, Reps) ───
+  // External Select Options (Products, Stores, Reps)
   const productActions: string[] = ['order_search_product'];
   for (let i = 1; i <= 8; i++) productActions.push(`order_product_${i}`);
   productActions.push('return_product_1', 'return_product_2');
@@ -298,7 +298,7 @@ export function registerAppHome(app: App) {
     } catch { await ack({ options: [] }); }
   });
 
-  // ─── Create Order from list (visit picker → order modal) ───
+  // Create Order from list (visit picker -> order modal)
   app.action('sfa_open_order_visit_picker', async ({ ack, body, client }) => {
     await ack();
     const uid = (body as any).user.id;
@@ -321,7 +321,7 @@ export function registerAppHome(app: App) {
         : active;
       await ack({
         options: filtered.map((v: any) => ({
-          text: { type: 'plain_text', text: `${v.Name} — ${v.AccountId__r?.Name || 'N/A'}` },
+          text: { type: 'plain_text', text: `${v.Name} - ${v.AccountId__r?.Name || 'N/A'}` },
           value: v.Id,
         })),
       });
@@ -337,10 +337,10 @@ export function registerAppHome(app: App) {
     await ack({ response_action: 'push', view: buildOrderSearchModal(visitId, []) });
   });
 
-  // ─── Competing Products ───
+  // Competing Products
   app.action('sfa_competing', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildCompetingProductsModal((body as any).actions[0].value) }); } catch (e) { await notifyError(uid, client, e); } });
 
-  // ─── Add Note ───
+  // Add Note
   app.action('sfa_open_note', async ({ ack, body, client }) => {
     await ack();
     const uid = (body as any).user.id;
@@ -351,14 +351,13 @@ export function registerAppHome(app: App) {
     } catch (e) { await notifyError(uid, client, e); }
   });
 
-  // ─── Reschedule ───
+  // Reschedule
   app.action('sfa_reschedule_visit', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildRescheduleModal((body as any).actions[0].value) }); } catch (e) { await notifyError(uid, client, e); } });
 
-  // ─── Noop ───
+  // Noop
   app.action('sfa_noop', async ({ ack }) => { await ack(); });
 
-  // ─── View Submissions ───
-
+  // View Submissions
   app.view('sfa_start_visit_submit', async ({ ack, view, body, client }) => {
     try {
       const visitId = view.private_metadata!;
@@ -386,7 +385,7 @@ export function registerAppHome(app: App) {
     } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
   });
 
-  // ─── Create Order: Add Item (search → add to cart) ───
+  // Create Order: Add Item (search -> add to cart)
   app.view('sfa_order_add_item', async ({ ack, view, body, client }) => {
     try {
       const visitId = view.private_metadata!;
@@ -431,7 +430,7 @@ export function registerAppHome(app: App) {
     } catch (e: any) { await ack({ response_action: 'errors', errors: { error: e.message } }); }
   });
 
-  // ─── Create Order: Place Order (from accumulated items) ───
+  // Create Order: Place Order (from accumulated items)
   app.view('sfa_order_place', async ({ ack, view, body, client }) => {
     const uid = (body as any).user.id;
     const meta = JSON.parse(view.private_metadata || '{}');
@@ -475,7 +474,7 @@ export function registerAppHome(app: App) {
     });
   });
 
-  // ─── Helper: ack-first async handler ───
+  // Helper: ack-first async handler
   // Pattern: ack immediately, do SF work after, show result via flash message
   async function afterAck(uid: string, client: any, work: () => Promise<void>) {
     try {
@@ -557,7 +556,7 @@ export function registerAppHome(app: App) {
     });
   });
 
-  // ─── New Submissions ───
+  // New Submissions
   app.view('sfa_competing_submit', async ({ ack, view, body, client }) => {
     const visitId = view.private_metadata!;
     const vals = view.state.values as any;
@@ -614,7 +613,7 @@ export function registerAppHome(app: App) {
     });
   });
 
-  // ─── Onboarding (3-step) ───
+  // Onboarding (3-step)
   app.action('sfa_open_onboarding', async ({ ack, body, client }) => { await ack(); const uid = (body as any).user.id; try { await client.views.open({ trigger_id: (body as any).trigger_id, view: buildOnboardingStep1Modal() }); } catch (e) { await notifyError(uid, client, e); } });
 
   function parseViewState(values: any): Record<string, any> {

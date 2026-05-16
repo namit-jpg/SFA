@@ -14,7 +14,7 @@ export function buildVisitDetailsView(
   blocks.push(B.actions(B.button(':arrow_left: Back to Visits', 'sfa_nav_visits')));
   blocks.push(B.divider());
 
-  // ─── Visit Summary ───
+  // Visit Summary
   const statusEmoji = isInProgress ? ':red_circle:' : isCompleted ? ':white_check_mark:' : ':orange_circle:';
   blocks.push({
     type: 'section',
@@ -30,7 +30,7 @@ export function buildVisitDetailsView(
     },
   });
 
-  // ─── Financial summary ───
+  // Financial summary
   const orderVal = visit.Order_Value__c || 0;
   const expenseAmt = visit.Total_Expense_Amount__c || 0;
   if (orderVal > 0 || expenseAmt > 0) {
@@ -40,7 +40,7 @@ export function buildVisitDetailsView(
   }
   blocks.push(B.divider());
 
-  // ─── Contact Person ───
+  // Contact Person
   if (contact) {
     blocks.push(B.header('CONTACT PERSON'));
     const phone = (contact as any).Phone__c || (contact as any).Phone;
@@ -56,7 +56,7 @@ export function buildVisitDetailsView(
     blocks.push(B.divider());
   }
 
-  // ─── Quick Actions (In Progress) ───
+  // Quick Actions (In Progress)
   if (isInProgress) {
     blocks.push(B.header('QUICK ACTIONS'));
     blocks.push(B.actions(
@@ -80,7 +80,7 @@ export function buildVisitDetailsView(
     blocks.push(B.divider());
   }
 
-  // ─── Active Promotions / Schemes ───
+  // Active Promotions / Schemes
   if (promotions && promotions.length > 0) {
     blocks.push(B.header(':gift: ACTIVE SCHEMES & PROMOTIONS'));
     for (const p of promotions) {
@@ -90,7 +90,7 @@ export function buildVisitDetailsView(
           type: 'mrkdwn',
           text: [
             `*${p.Name}*  |  ${p.Scheme_Type__c || 'Scheme'}`,
-            `Status: ${p.Status__c || 'N/A'}  |  Valid: ${p.Start_Date__c || '?'} → ${p.End_Date__c || '?'}`,
+            `Status: ${p.Status__c || 'N/A'}  |  Valid: ${p.Start_Date__c || '?'} -> ${p.End_Date__c || '?'}`,
             p.Description__c ? `_${p.Description__c}_` : '',
           ].filter(Boolean).join('\n'),
         },
@@ -99,7 +99,7 @@ export function buildVisitDetailsView(
     blocks.push(B.divider());
   }
 
-  // ─── Expenses ───
+  // Expenses
   if (expenses && expenses.length > 0) {
     blocks.push(B.header(':moneybag: EXPENSES'));
     for (const e of expenses) {
@@ -109,12 +109,12 @@ export function buildVisitDetailsView(
         e.Accommodation_Expense__c ? `Accommodation: ${B.formatCurrency(e.Accommodation_Expense__c)}` : '',
         e.Miscellaneous_Expense__c ? `Misc: ${B.formatCurrency(e.Miscellaneous_Expense__c)}` : '',
       ].filter(Boolean);
-      blocks.push(B.context(`${B.formatCurrency(e.Amount__c || 0)}  —  ${parts.join(' | ') || 'General'}${e.Description__c ? `  |  ${e.Description__c}` : ''}`));
+      blocks.push(B.context(`${B.formatCurrency(e.Amount__c || 0)}  -  ${parts.join(' | ') || 'General'}${e.Description__c ? `  |  ${e.Description__c}` : ''}`));
     }
     blocks.push(B.divider());
   }
 
-  // ─── Survey Responses ───
+  // Survey Responses
   if (surveys && surveys.length > 0) {
     blocks.push(B.header(':clipboard: SURVEY RESPONSES'));
     for (const s of surveys) {
@@ -123,7 +123,7 @@ export function buildVisitDetailsView(
     blocks.push(B.divider());
   }
 
-  // ─── Notes ───
+  // Notes
   blocks.push(B.header('NOTES'));
   blocks.push(B.section(visit.Visit_Notes__c || '_No notes yet_'));
   blocks.push(B.actions(
