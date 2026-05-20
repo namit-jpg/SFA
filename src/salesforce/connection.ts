@@ -17,10 +17,10 @@ type FieldValidationMeta = PicklistFieldMeta & {
 export async function getConnection(): Promise<any> {
   if (conn) {
     try {
-      await conn.identity();
+      await conn.query('SELECT Id FROM User LIMIT 1');
       return conn;
     } catch (e) {
-      console.log('[SF] Session check failed, reconnecting...', e);
+      console.log('[SF] Session check failed, reconnecting...');
       conn = null;
     }
   }
