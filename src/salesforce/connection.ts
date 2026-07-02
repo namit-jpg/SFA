@@ -22,17 +22,13 @@ export async function getConnection(): Promise<any> {
     } catch (e) {
       console.log('[SF] Session check failed, reconnecting...');
       conn = null;
+      describeCache.clear();
     }
   }
 
-  if (config.salesforce.accessToken && config.salesforce.instanceUrl) {
-    conn = new jsforce.Connection({
-      instanceUrl: config.salesforce.instanceUrl,
-      accessToken: config.salesforce.accessToken,
-      version: '62.0',
-    });
-    console.log('[SF] Connected via access token');
-  } else {
+  const hasCredentials = config.salesforce.username && config.salesforce.password;
+
+  if (hasCredentials) {
     const c = new jsforce.Connection({
       loginUrl: config.salesforce.loginUrl,
       version: '62.0',
@@ -44,6 +40,16 @@ export async function getConnection(): Promise<any> {
       throw e;
     }
     conn = c;
+    console.log('[SF] Connected via username/password');
+  } else if (config.salesforce.accessToken && config.salesforce.instanceUrl) {
+    conn = new jsforce.Connection({
+      instanceUrl: config.salesforce.instanceUrl,
+      accessToken: config.salesforce.accessToken,
+      version: '62.0',
+    });
+    console.log('[SF] Connected via access token');
+  } else {
+    throw new Error('[SF] No credentials available — set SF_USERNAME+SF_PASSWORD or SF_ACCESS_TOKEN+SF_INSTANCE_URL');
   }
 
   console.log(`[SF] Connected as ${(conn as any).userInfo?.username ?? 'unknown'}`);
