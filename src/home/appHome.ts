@@ -29,7 +29,7 @@ import { buildCompetingProductsModal, buildVisitNotesModal, buildRescheduleModal
 import { buildOrderVisitPickerModal } from '../modals/orderVisitPickerModal';
 import * as B from '../utils/blocks';
 import { SOBJECTS, VISIT_STATUS, VISIT_TYPE, SF_CONSTANTS } from '../config';
-import { insertRecord, updateRecord } from '../salesforce/connection';
+import { insertRecord, updateRecord, getConnectedUserId } from '../salesforce/connection';
 
 const USER_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const sfUserCache = new Map<string, { data: { sfUserId: string; sfaUser: any; sfUserRecordId: string; isManager: boolean }; ts: number }>();
@@ -551,6 +551,9 @@ export function registerAppHome(app: App) {
         visitPayload.User__c = userCtx.sfUserRecordId;
         visitPayload.Visitor__c = userCtx.sfUserRecordId;
         visitPayload.OwnerId = userCtx.sfUserRecordId;
+      } else {
+        const fallbackOwner = await getConnectedUserId();
+        if (fallbackOwner) visitPayload.OwnerId = fallbackOwner;
       }
       await insertRecord(SOBJECTS.VISIT, visitPayload);
       setFlash(uid, `:white_check_mark: Visit created for *${retailerName}* on ${date}.`);

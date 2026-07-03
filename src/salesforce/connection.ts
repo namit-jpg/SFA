@@ -50,6 +50,27 @@ export async function getConnection(): Promise<any> {
   return conn;
 }
 
+let cachedConnectedUserId: string | null = null;
+
+export async function getConnectedUserId(): Promise<string | null> {
+  if (cachedConnectedUserId) return cachedConnectedUserId;
+  try {
+    const c = await getConnection();
+    if ((c as any).userInfo?.id) {
+      cachedConnectedUserId = (c as any).userInfo.id;
+      return cachedConnectedUserId;
+    }
+    const user = await queryOne<any>(`SELECT Id FROM User WHERE Username = '${esc(config.salesforce.username)}' AND IsActive = true LIMIT 1`);
+    if (user) {
+      cachedConnectedUserId = user.Id;
+      return cachedConnectedUserId;
+    }
+  } catch (e) {
+    console.error('[SF] Failed to get connected user ID:', e);
+  }
+  return null;
+}
+
 export function esc(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
