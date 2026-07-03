@@ -547,10 +547,11 @@ export function registerAppHome(app: App) {
         Type__c: VISIT_TYPE.AD_HOC,
         Purpose__c: vals.adhoc_purpose?.adhoc_purpose?.selected_option?.value || 'Order Taking',
       };
-      if (userCtx.sfUserRecordId) {
-        visitPayload.User__c = userCtx.sfUserRecordId;
-        visitPayload.Visitor__c = userCtx.sfUserRecordId;
-        visitPayload.OwnerId = userCtx.sfUserRecordId;
+      const ownerId = userCtx.sfUserRecordId || userCtx.sfUserId;
+      if (ownerId) {
+        visitPayload.User__c = ownerId;
+        visitPayload.Visitor__c = ownerId;
+        visitPayload.OwnerId = ownerId;
       }
       await insertRecord(SOBJECTS.VISIT, visitPayload);
       setFlash(uid, `:white_check_mark: Visit created for *${retailerName}* on ${date}.`);

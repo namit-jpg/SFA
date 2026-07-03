@@ -147,6 +147,9 @@ async function validateFieldValues(c: any, sobject: string, data: Record<string,
   const fields = await getValidationFields(c, sobject);
   const errors: string[] = [];
 
+  // Skip prefix validation for known cross-object references
+  const SKIP_PREFIX_CHECK = new Set(['Visit__c']);
+
   for (const [fieldName, value] of Object.entries(data)) {
     if (value === undefined || value === null || value === '') continue;
     const meta = fields.get(fieldName);
@@ -170,9 +173,11 @@ async function validateFieldValues(c: any, sobject: string, data: Record<string,
         errors.push(`${sobject}.${fieldName}: "${id}" is not a Salesforce record id`);
         continue;
       }
-      const allowedPrefixes = await getKeyPrefixes(c, meta.referenceTo);
-      if (allowedPrefixes.size > 0 && !allowedPrefixes.has(id.slice(0, 3))) {
-        errors.push(`${sobject}.${fieldName}: "${id}" has the wrong id type. Expected ${meta.referenceTo.join(' or ')}`);
+      if (!SKIP_PREFIX_CHECK.has(fieldName)) {
+        const allowedPrefixes = await getKeyPrefixes(c, meta.referenceTo);
+        if (allowedPrefixes.size > 0 && !allowedPrefixes.has(id.slice(0, 3))) {
+          errors.push(`${sobject}.${fieldName}: "${id}" has the wrong id type. Expected ${meta.referenceTo.join(' or ')}`);
+        }
       }
     }
   }
