@@ -6,6 +6,7 @@ import { buildVisitInsightsView } from './views/visitInsightsView';
 import { buildOrdersView } from './views/ordersView';
 import { buildAccountsView } from './views/accountsView';
 import { buildProfileView } from './views/profileView';
+import { SF_CONSTANTS } from '../config';
 import {
   getDailyVisits, getActiveVisit, getVisitInsights, getTodayAttendance,
   getStoresByIds, getVisitById, getStoreVisitHistory, getStoreOrders,
@@ -74,20 +75,22 @@ export async function publishView(app: App, slackUserId: string, client: any, us
     switch (s.page) {
       case 'home': {
         const today = B.todayDateString();
+        const ownerId = userCtx.sfUserRecordId || SF_CONSTANTS.DEFAULT_OWNER_ID;
         const [dailyVisits, insights, attendance] = await Promise.all([
-          getDailyVisits(userCtx.sfUserId, today),
+          getDailyVisits(userCtx.sfUserId, today, ownerId),
           getVisitInsights(userCtx.sfUserId),
           getTodayAttendance(userCtx.sfUserId, today),
         ]);
-        const weekVisits = await getDailyVisits(userCtx.sfUserId, 'THIS_WEEK');
+        const weekVisits = await getDailyVisits(userCtx.sfUserId, 'THIS_WEEK', ownerId);
         const completed = weekVisits.filter((v: any) => v.Status__c === 'Completed').length;
         blocks.push(...buildHomeView(userCtx.sfaUser?.Name || 'User', dailyVisits, insights, completed, weekVisits.length, !!attendance));
         break;
       }
       case 'visits': {
         const today = B.todayDateString();
-        const dailyVisits = await getDailyVisits(userCtx.sfUserId, today);
-        const allVisits = s.visitFilter === 'all' ? await getDailyVisits(userCtx.sfUserId, 'LAST_MONTH') : [];
+        const ownerId = userCtx.sfUserRecordId || SF_CONSTANTS.DEFAULT_OWNER_ID;
+        const dailyVisits = await getDailyVisits(userCtx.sfUserId, today, ownerId);
+        const allVisits = s.visitFilter === 'all' ? await getDailyVisits(userCtx.sfUserId, 'LAST_MONTH', ownerId) : [];
         const visits = s.visitFilter === 'all' ? allVisits : dailyVisits;
         const storeIds = visits.map((v: any) => v.Retail_Store_Custom__c).filter(Boolean);
         const storeMap = await getStoresByIds(storeIds);
@@ -131,7 +134,8 @@ export async function publishView(app: App, slackUserId: string, client: any, us
       }
       case 'orders': {
         const today = B.todayDateString();
-        const dailyVisits = await getDailyVisits(userCtx.sfUserId, today);
+        const ownerId = userCtx.sfUserRecordId || SF_CONSTANTS.DEFAULT_OWNER_ID;
+        const dailyVisits = await getDailyVisits(userCtx.sfUserId, today, ownerId);
         const storeIds = dailyVisits.map((v: any) => v.Retail_Store_Custom__c).filter(Boolean);
         const storeMap = await getStoresByIds(storeIds);
         blocks.push(...buildOrdersView(dailyVisits, storeMap, s.orderSort));

@@ -85,8 +85,9 @@ export async function getManagerStatus(sfUserId: string): Promise<boolean> {
   return !!sfUser?.UserRoleId;
 }
 
-export async function getDailyVisits(sfaUserId: string, date: string): Promise<VisitRecord[]> {
+export async function getDailyVisits(sfaUserId: string, date: string, ownerId?: string): Promise<VisitRecord[]> {
   const dateClause = soqlDate(date);
+  const ownerClause = ownerId ? ` OR OwnerId = '${esc(ownerId)}'` : '';
   return query<VisitRecord>(
     `SELECT Id, Name, Status__c, PlannedDate__c, Visit_Date__c, Planned_Start_Time__c, Planned_End_Time__c,
             ActualStartTime__c, ActualEndTime__c, Beat__c, Beat__r.Name,
@@ -95,7 +96,7 @@ export async function getDailyVisits(sfaUserId: string, date: string): Promise<V
             Visit_Notes__c, Visit_Outcome__c, Order_Value__c, Total_Expense_Amount__c, Type__c, Purpose__c,
             CreatedDate
      FROM ${SOBJECTS.VISIT}
-     WHERE SFA_User__c = '${esc(sfaUserId)}' AND Visit_Date__c = ${dateClause}
+     WHERE (SFA_User__c = '${esc(sfaUserId)}'${ownerClause}) AND Visit_Date__c = ${dateClause}
      ORDER BY Planned_Start_Time__c ASC NULLS LAST`
   );
 }

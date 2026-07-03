@@ -190,7 +190,8 @@ export function registerAppHome(app: App) {
     if (!userCtx) return;
     const now = new Date().toISOString();
     const today = B.todayDateString();
-    const visits = await getDailyVisits(userCtx.sfUserId, today);
+    const ownerId = userCtx.sfUserRecordId || SF_CONSTANTS.DEFAULT_OWNER_ID;
+    const visits = await getDailyVisits(userCtx.sfUserId, today, ownerId);
     const pending = visits.find((v: any) => v.Status__c === 'Planned');
     if (pending) {
       await updateRecord(SOBJECTS.VISIT, pending.Id, { Check_In_Time__c: now });
@@ -313,7 +314,8 @@ export function registerAppHome(app: App) {
       const userCtx = await resolveUser(slackUserId, client);
       if (!userCtx) { await ack({ options: [] }); return; }
       const today = B.todayDateString();
-      const visits = await getDailyVisits(userCtx.sfUserId, today);
+    const ownerId = userCtx.sfUserRecordId || SF_CONSTANTS.DEFAULT_OWNER_ID;
+    const visits = await getDailyVisits(userCtx.sfUserId, today, ownerId);
       const active = visits.filter((v: any) => [VISIT_STATUS.PLANNED, VISIT_STATUS.IN_PROGRESS].includes(v.Status__c));
       const search = (payload.value || '').toLowerCase();
       const filtered = search
