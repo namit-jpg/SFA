@@ -459,7 +459,6 @@ export function registerAppHome(app: App) {
         RecordTypeId: SF_CONSTANTS.ORDER_RECORD_TYPE_SECONDARY,
         Retailer_Account__c: accountId,
         Distributor_Account__c: SF_CONSTANTS.WD_DISTRIBUTOR_ID,
-        Visit__c: visitId,
       });
       let total = 0;
       for (const item of items) {
