@@ -550,6 +550,7 @@ export function registerAppHome(app: App) {
       if (userCtx.sfUserRecordId) {
         visitPayload.User__c = userCtx.sfUserRecordId;
         visitPayload.Visitor__c = userCtx.sfUserRecordId;
+        visitPayload.OwnerId = userCtx.sfUserRecordId;
       }
       await insertRecord(SOBJECTS.VISIT, visitPayload);
       setFlash(uid, `:white_check_mark: Visit created for *${retailerName}* on ${date}.`);
