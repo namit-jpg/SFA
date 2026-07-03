@@ -51,6 +51,7 @@ export const SOBJECTS = {
 export const SF_CONSTANTS = {
   WD_DISTRIBUTOR_ID: '001am00001kjEdKAAU',
   ORDER_RECORD_TYPE_SECONDARY: '012am0000045cFFAAY',
+  DEFAULT_OWNER_ID: '005am00000AN7xWAAT',
 };
 
 export function validateConfig(): void {
