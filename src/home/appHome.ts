@@ -292,15 +292,31 @@ export function registerAppHome(app: App) {
   app.options('beat_stores', async ({ ack, payload }: any) => {
     try {
       const stores = payload.value ? await searchStores(payload.value) : [];
-      await ack({ options: stores.map((s: any) => ({ text: { type: 'plain_text' as const, text: s.Account__r?.Name || s.Name }, value: s.Id })) });
-    } catch { await ack({ options: [] }); }
+      await ack({
+        options: stores.map((s: any) => {
+          const label = (s.Account__r?.Name || s.Name || 'Store').slice(0, 75);
+          return { text: { type: 'plain_text' as const, text: label }, value: s.Id };
+        }),
+      });
+    } catch (e) {
+      console.error('beat_stores search failed:', e);
+      await ack({ options: [] });
+    }
   });
 
   app.options('adhoc_store', async ({ ack, payload }: any) => {
     try {
       const stores = payload.value ? await searchStores(payload.value) : [];
-      await ack({ options: stores.map((s: any) => ({ text: { type: 'plain_text' as const, text: s.Account__r?.Name || s.Name }, value: s.Id })) });
-    } catch { await ack({ options: [] }); }
+      await ack({
+        options: stores.map((s: any) => {
+          const label = (s.Account__r?.Name || s.Name || 'Store').slice(0, 75);
+          return { text: { type: 'plain_text' as const, text: label }, value: s.Id };
+        }),
+      });
+    } catch (e) {
+      console.error('adhoc_store search failed:', e);
+      await ack({ options: [] });
+    }
   });
 
   // Create Order from list (visit picker -> order modal)

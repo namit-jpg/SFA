@@ -141,7 +141,7 @@ export async function searchStores(searchTerm: string): Promise<RetailStoreRecor
   return query<RetailStoreRecord>(
     `SELECT Id, Name, Store_Code__c, Account__c, Account__r.Name
      FROM ${SOBJECTS.RETAIL_STORE}
-     WHERE (Name LIKE '%${escaped}%' OR Store_Code__c LIKE '%${escaped}%')
+     WHERE (Name LIKE '%${escaped}%' OR Store_Code__c LIKE '%${escaped}%' OR Account__r.Name LIKE '%${escaped}%')
        AND Account__r.RecordType.DeveloperName = 'Retailer'
      ORDER BY Name ASC LIMIT 25`
   );
