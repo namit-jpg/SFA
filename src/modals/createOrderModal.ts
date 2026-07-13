@@ -20,7 +20,8 @@ export function buildOrderSearchModal(visitId: string, currentItems: any[]): any
   }
 
   // Search
-  blocks.push(B.externalSelect('order_search_product', ':mag: Search Product', 'Type to search products...', currentItems.length === 0 ? false : true, 1));
+  // min_query_length 0 so Slack loads options on open (shows full assortment without typing)
+  blocks.push(B.externalSelect('order_search_product', ':mag: Search Product', 'Type name or code (e.g. TMT, Pipe)...', currentItems.length === 0 ? false : true, 0));
   blocks.push(B.numberInput('order_search_qty', ':1234: Quantity', 'Enter quantity', true, '1'));
 
   // Action picker

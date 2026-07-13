@@ -253,20 +253,53 @@ export async function getAllStores(): Promise<RetailStoreRecord[]> {
 
 export async function searchProducts(searchTerm: string): Promise<any[]> {
   const term = (searchTerm || '').trim();
-  // Empty query: return first active products so external_select can show options
-  if (!term) {
-    return query<any>(
-      `SELECT Id, Name, ProductCode, Description, Family, IsActive
-       FROM ${SOBJECTS.PRODUCT}
-       WHERE IsActive = true
-       ORDER BY Name ASC LIMIT 25`
+  const escaped = term ? escLike(term) : '';
+  const nameFilter = term
+    ? ` AND (Product.Name LIKE '%${escaped}%' OR Product.ProductCode LIKE '%${escaped}%')`
+    : '';
+  const productFilter = term
+    ? ` AND (Name LIKE '%${escaped}%' OR ProductCode LIKE '%${escaped}%')`
+    : '';
+
+  // Prefer assortment products (field-sales catalog), then fall back to all active Product2
+  try {
+    const assortmentRows = await query<any>(
+      `SELECT ProductId, Product.Name, Product.ProductCode, Product.Description, Product.Family, Product.IsActive
+       FROM AssortmentProduct
+       WHERE Active__c = true
+         AND Product.IsActive = true
+         AND Assortment.Name LIKE 'Pulkit%'
+         ${nameFilter}
+       ORDER BY Product.Name ASC
+       LIMIT 50`
     );
+    if (assortmentRows.length > 0) {
+      const seen = new Set<string>();
+      const products: any[] = [];
+      for (const row of assortmentRows) {
+        const id = row.ProductId || row.Product?.Id;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        products.push({
+          Id: id,
+          Name: row.Product?.Name || '',
+          ProductCode: row.Product?.ProductCode || '',
+          Description: row.Product?.Description || '',
+          Family: row.Product?.Family || '',
+          IsActive: row.Product?.IsActive !== false,
+        });
+        if (products.length >= 25) break;
+      }
+      if (products.length > 0) return products;
+    }
+  } catch (e) {
+    console.error('[SF] AssortmentProduct search failed, falling back to Product2:', e);
   }
-  const escaped = escLike(term);
+
   return query<any>(
     `SELECT Id, Name, ProductCode, Description, Family, IsActive
      FROM ${SOBJECTS.PRODUCT}
-     WHERE IsActive = true AND (Name LIKE '%${escaped}%' OR ProductCode LIKE '%${escaped}%')
+     WHERE IsActive = true ${productFilter}
      ORDER BY Name ASC LIMIT 25`
   );
 }
