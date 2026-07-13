@@ -167,7 +167,9 @@ export async function resolveCustomStoreForVisit(storeId: string) {
 
 export async function searchProducts(term: string) {
   if (config.demoMode) {
-    return demo.demoSearchProducts(term).map((p) => ({
+    const rows = demo.demoSearchProducts(term || '');
+    console.log(`[Demo] searchProducts("${term}") → ${rows.length} product(s)`);
+    return rows.map((p) => ({
       Id: p.Id, Name: p.Name, ProductCode: p.ProductCode,
       Description: p.Description, Family: p.Family, IsActive: p.IsActive,
     }));

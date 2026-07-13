@@ -268,14 +268,21 @@ export function registerAppHome(app: App) {
   for (const actionId of productActions) {
     app.options(actionId, async ({ ack, payload }: any) => {
       try {
-        const q = payload.value || '';
-        const products = q ? await searchProducts(q) : [];
-        const options = products.map((p: any) => ({
-          text: { type: 'plain_text' as const, text: `${p.Name} (${p.ProductCode || 'N/A'})` },
-          value: p.Id,
-        }));
+        const q = (payload.value || '').trim();
+        // Pass query through; demo catalog returns results even for empty/no-match
+        const products = await searchProducts(q);
+        const options = products.map((p: any) => {
+          const label = `${p.Name || 'Product'}${p.ProductCode ? ` (${p.ProductCode})` : ''}`.slice(0, 75);
+          return {
+            text: { type: 'plain_text' as const, text: label || 'Product', emoji: true },
+            value: String(p.Id),
+          };
+        }).filter((o: any) => o.value);
         await ack({ options });
-      } catch { await ack({ options: [] }); }
+      } catch (e) {
+        console.error(`[SFA] product options (${actionId}) failed:`, e);
+        await ack({ options: [] });
+      }
     });
   }
 

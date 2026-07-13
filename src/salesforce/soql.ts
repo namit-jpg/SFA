@@ -252,7 +252,17 @@ export async function getAllStores(): Promise<RetailStoreRecord[]> {
 }
 
 export async function searchProducts(searchTerm: string): Promise<any[]> {
-  const escaped = escLike(searchTerm);
+  const term = (searchTerm || '').trim();
+  // Empty query: return first active products so external_select can show options
+  if (!term) {
+    return query<any>(
+      `SELECT Id, Name, ProductCode, Description, Family, IsActive
+       FROM ${SOBJECTS.PRODUCT}
+       WHERE IsActive = true
+       ORDER BY Name ASC LIMIT 25`
+    );
+  }
+  const escaped = escLike(term);
   return query<any>(
     `SELECT Id, Name, ProductCode, Description, Family, IsActive
      FROM ${SOBJECTS.PRODUCT}

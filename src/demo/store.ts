@@ -26,6 +26,19 @@ function ensureLoaded(): DemoDb {
     try {
       db = JSON.parse(fs.readFileSync(storePath, 'utf8')) as DemoDb;
       if (!db.version || !Array.isArray(db.stores)) throw new Error('invalid store');
+      // Repair partial stores from older seeds
+      const seed = buildSeedDb();
+      let repaired = false;
+      if (!Array.isArray(db.products) || db.products.length === 0) {
+        db.products = seed.products;
+        repaired = true;
+      }
+      if (!Array.isArray(db.expenses)) { db.expenses = []; repaired = true; }
+      if (!Array.isArray(db.surveys)) { db.surveys = []; repaired = true; }
+      if (!Array.isArray(db.competing)) { db.competing = []; repaired = true; }
+      if (!Array.isArray(db.onboardings)) { db.onboardings = []; repaired = true; }
+      if (typeof db.seq !== 'number') { db.seq = seed.seq; repaired = true; }
+      if (repaired) persist();
     } catch {
       db = buildSeedDb();
       persist();
@@ -272,10 +285,19 @@ export function demoAddCompeting(data: {
 // ── Products / Orders (stub) ────────────────────────────
 
 export function demoSearchProducts(term: string): DemoProduct[] {
-  const q = (term || '').toLowerCase();
-  return ensureLoaded().products.filter(
-    (p) => p.IsActive && (p.Name.toLowerCase().includes(q) || p.ProductCode.toLowerCase().includes(q))
-  ).slice(0, 25);
+  const d = ensureLoaded();
+  const products = Array.isArray(d.products) ? d.products : [];
+  const active = products.filter((p) => p && p.IsActive !== false);
+  const q = (term || '').trim().toLowerCase();
+  if (!q) return active.slice(0, 25);
+  const matched = active.filter((p) => {
+    const name = (p.Name || '').toLowerCase();
+    const code = (p.ProductCode || '').toLowerCase();
+    const family = (p.Family || '').toLowerCase();
+    return name.includes(q) || code.includes(q) || family.includes(q);
+  });
+  // If no match for short/odd queries, still show catalog so external_select is usable
+  return (matched.length > 0 ? matched : active).slice(0, 25);
 }
 
 export function demoGetProduct(id: string): DemoProduct | null {
