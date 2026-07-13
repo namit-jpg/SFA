@@ -13,7 +13,8 @@ import {
   getFrequentlyBoughtProducts, getAccountContact, getLastOrderSummary,
   getStoreVisitLogs, getAllStores, getVisitSurveyResponses, getActivePromotions,
   getVisitExpenses,
-} from '../salesforce/soql';
+} from '../data';
+import { config } from '../config';
 import * as B from '../utils/blocks';
 
 type Page = 'home' | 'visits' | 'visit_details' | 'visit_insights' | 'orders' | 'accounts' | 'profile';
@@ -161,6 +162,9 @@ export async function publishView(app: App, slackUserId: string, client: any, us
   }
 
   blocks.unshift(navBar(s.page));
-  if (flash) blocks.splice(1, 0, B.context(flash));
+  if (config.demoMode) {
+    blocks.splice(1, 0, B.context(':test_tube: *Demo mode* — data stored locally (not Salesforce). Set `DEMO_MODE=false` for production.'));
+  }
+  if (flash) blocks.splice(config.demoMode ? 2 : 1, 0, B.context(flash));
   await client.views.publish({ user_id: slackUserId, view: { type: 'home', blocks } });
 }

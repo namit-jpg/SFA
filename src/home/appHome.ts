@@ -1,30 +1,19 @@
 import { App } from '@slack/bolt';
-import { getSFUserByEmail, getSFAUserByEmail, getSFAUserByUserId,
+import {
+  getSFUserByEmail, getSFAUserByEmail,
   getDailyVisits, getActiveVisit, getVisitById, getStoreById,
-  getVisitInsights, getTodayAttendance, getStoresByIds,
-  getStoreVisitHistory, getStoreOrders, getFrequentlyBoughtProducts,
-  getAccountContact, getLastOrderSummary, getStoreVisitLogs,
-  getPastVisits, searchProducts, getRepsList, searchStores,
-  resolveCustomStoreForVisit,
+  getAccountContact, searchProducts, getRepsList, searchStores,
   getStandardPricebookId, getPriceForProduct,
   updateVisitNotes, rescheduleVisit, createCompetingProduct,
-  getActivePromotions, getVisitExpenses,
-} from '../salesforce/soql';
+  updateVisitRecord, createAdhocVisit, addSurveyResponse, addExpenseRecord,
+  placeOrder, insertPartnerRequest, recordOnboardingDecision, setProofClient,
+} from '../data';
 import { publishView, setState, setFlash, clearState } from './router';
-import { buildVisitsView } from './views/visitsView';
-import { buildVisitDetailsView } from './views/visitDetailsView';
-import { buildVisitInsightsView } from './views/visitInsightsView';
-import { buildHomeView } from './views/homeView';
-import { buildOrdersView } from './views/ordersView';
-import { buildAccountsView } from './views/accountsView';
-import { buildProfileView } from './views/profileView';
 import { buildOrderSearchModal, buildOrderReviewModal } from '../modals/createOrderModal';
 import { buildSurveyModal } from '../modals/surveyModal';
 import { buildExpenseModal } from '../modals/expenseModal';
 import { buildAdhocVisitModal } from '../modals/adhocVisitModal';
 import { buildBeatPlanModal } from '../modals/beatPlanModal';
-import { buildStartVisitModal } from '../modals/startVisitModal';
-import { buildEndVisitModal } from '../modals/endVisitModal';
 import {
   buildOnboardingStep1Modal, buildOnboardingStep2Modal, buildOnboardingStep3Modal,
   buildOnboardingApprovalMessage, buildOnboardingResolvedBlocks, buildOnboardingDecisionMessage,
@@ -33,8 +22,7 @@ import {
 import { buildCompetingProductsModal, buildVisitNotesModal, buildRescheduleModal } from '../modals/competingNotesModals';
 import { buildOrderVisitPickerModal } from '../modals/orderVisitPickerModal';
 import * as B from '../utils/blocks';
-import { config, SOBJECTS, VISIT_STATUS, VISIT_TYPE, SF_CONSTANTS } from '../config';
-import { insertRecord, updateRecord } from '../salesforce/connection';
+import { config, VISIT_STATUS, VISIT_TYPE, SF_CONSTANTS } from '../config';
 
 const USER_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const sfUserCache = new Map<string, { data: { sfUserId: string; sfaUser: any; sfUserRecordId: string; isManager: boolean }; ts: number }>();
@@ -64,9 +52,18 @@ async function resolveUser(slackUserId: string, client: any) {
 export function registerAppHome(app: App) {
   // App Home Opened
   app.event('app_home_opened', async ({ event, client }) => {
+    setProofClient(client);
     const userCtx = await resolveUser(event.user, client);
-    if (!userCtx) {
-      await client.views.publish({ user_id: event.user, view: { type: 'home', blocks: [B.section(':warning: Cannot link to Salesforce.')] } });
+    if (!userCtx || (!userCtx.sfUserId && !config.demoMode)) {
+      await client.views.publish({
+        user_id: event.user,
+        view: {
+          type: 'home',
+          blocks: [B.section(config.demoMode
+            ? ':warning: Cannot resolve your Slack email for demo mode.'
+            : ':warning: Cannot link to Salesforce.')],
+        },
+      });
       return;
     }
     await publishView(app, event.user, client, userCtx);
@@ -199,7 +196,7 @@ export function registerAppHome(app: App) {
     const visits = await getDailyVisits(userCtx.sfUserId, today, ownerId);
     const pending = visits.find((v: any) => v.Status__c === 'Planned');
     if (pending) {
-      await updateRecord(SOBJECTS.VISIT, pending.Id, { Check_In_Time__c: now });
+      await updateVisitRecord(pending.Id, { Check_In_Time__c: now });
     }
     setFlash(uid, `:white_check_mark: Checked in for today - ${B.formatDateTime(now)}`);
     await publishView(app, uid, client, userCtx);
@@ -224,7 +221,7 @@ export function registerAppHome(app: App) {
       if (userCtx) await publishView(app, uid, client, userCtx);
       return;
     }
-    await updateRecord(SOBJECTS.VISIT, visitId, { Status__c: VISIT_STATUS.IN_PROGRESS, ActualStartTime__c: new Date().toISOString() });
+    await updateVisitRecord(visitId, { Status__c: VISIT_STATUS.IN_PROGRESS, ActualStartTime__c: new Date().toISOString() });
     setState(uid, { page: 'visit_details', selectedVisitId: visitId });
     if (userCtx) await publishView(app, uid, client, userCtx);
   });
@@ -234,7 +231,7 @@ export function registerAppHome(app: App) {
     await ack();
     const visitId = (body as any).actions[0].value;
     const uid = (body as any).user.id;
-    await updateRecord(SOBJECTS.VISIT, visitId, { Status__c: VISIT_STATUS.COMPLETED, ActualEndTime__c: new Date().toISOString() });
+    await updateVisitRecord(visitId, { Status__c: VISIT_STATUS.COMPLETED, ActualEndTime__c: new Date().toISOString() });
     setFlash(uid, ':white_check_mark: Visit completed successfully.');
     setState(uid, { page: 'visits' });
     const u = await resolveUser(uid, client);
@@ -388,7 +385,7 @@ export function registerAppHome(app: App) {
       if (existing?.Status__c === 'In Progress') { await ack({ response_action: 'clear' }); return; }
       const active = await getActiveVisit((await resolveUser((body as any).user.id, client))?.sfUserId || '');
       if (active && active.Id !== visitId) { await ack({ response_action: 'errors', errors: { error: 'End current visit first.' } }); return; }
-      await updateRecord(SOBJECTS.VISIT, visitId, { Status__c: VISIT_STATUS.IN_PROGRESS, ActualStartTime__c: new Date().toISOString() });
+      await updateVisitRecord(visitId, { Status__c: VISIT_STATUS.IN_PROGRESS, ActualStartTime__c: new Date().toISOString() });
       await ack({ response_action: 'clear' });
       const u = await resolveUser((body as any).user.id, client);
       if (u) await publishView(app, (body as any).user.id, client, u);
@@ -401,7 +398,7 @@ export function registerAppHome(app: App) {
       const vals = view.state.values;
       const reason = (vals as any).end_reason?.end_reason?.selected_option?.value;
       const status = reason ? VISIT_STATUS.CANCELLED : VISIT_STATUS.COMPLETED;
-      await updateRecord(SOBJECTS.VISIT, visitId, { Status__c: status, ActualEndTime__c: new Date().toISOString(), Visit_Outcome__c: (vals as any).end_notes?.end_notes?.value || '', Not_Visited_Reason__c: reason || null });
+      await updateVisitRecord(visitId, { Status__c: status, ActualEndTime__c: new Date().toISOString(), Visit_Outcome__c: (vals as any).end_notes?.end_notes?.value || '', Not_Visited_Reason__c: reason || null });
       await ack({ response_action: 'clear' });
       const u = await resolveUser((body as any).user.id, client);
       if (u) await publishView(app, (body as any).user.id, client, u);
@@ -469,30 +466,9 @@ export function registerAppHome(app: App) {
       let accountId = visit.AccountId__c;
       if (!accountId) { const s = await getStoreById(visit.Retail_Store_Custom__c); accountId = s?.Account__c || ''; }
       if (!accountId) { setFlash(uid, ':warning: No account linked to this visit.'); return; }
-      const pbId = await getStandardPricebookId();
-      if (!pbId) { setFlash(uid, ':warning: No pricebook found in Salesforce.'); return; }
-
-      const orderId = await insertRecord(SOBJECTS.ORDER, {
-        AccountId: accountId,
-        Pricebook2Id: pbId,
-        Status: 'Draft',
-        EffectiveDate: B.todayDateString(),
-        RecordTypeId: SF_CONSTANTS.ORDER_RECORD_TYPE_SECONDARY,
-        Retailer_Account__c: accountId,
-        Distributor_Account__c: SF_CONSTANTS.WD_DISTRIBUTOR_ID,
-      });
-      let total = 0;
-      for (const item of items) {
-        if (!item.entryId) continue;
-        await insertRecord(SOBJECTS.ORDER_ITEM, {
-          OrderId: orderId, Product2Id: item.productId, Quantity: item.quantity,
-          UnitPrice: item.unitPrice, PricebookEntryId: item.entryId,
-        });
-        total += item.unitPrice * item.quantity;
-      }
-      await updateRecord(SOBJECTS.VISIT, visitId, { Order__c: orderId, Order_Value__c: (visit.Order_Value__c || 0) + total });
+      const result = await placeOrder(visitId, items, accountId);
       orderState.delete(uid);
-      setFlash(uid, `:white_check_mark: Order placed! Total: *${B.formatCurrency(total)}*`);
+      setFlash(uid, `:white_check_mark: Order placed! Total: *${B.formatCurrency(result.total)}*${config.demoMode ? ' _(demo)_' : ''}`);
     });
   });
 
@@ -524,7 +500,7 @@ export function registerAppHome(app: App) {
     await ack();
     const surveyType = vals.survey_type?.survey_type?.selected_option?.value || 'Retailer Feedback';
     for (const r of responses) {
-      await insertRecord(SOBJECTS.VISIT_SURVEY_RESPONSE, { Visit_WD__c: visitId, Question__c: r.question, Answer__c: r.answer, Survey_Type__c: surveyType }).catch(console.error);
+      await addSurveyResponse(visitId, r.question, r.answer, surveyType).catch(console.error);
     }
     setFlash(uid, `:white_check_mark: Survey submitted (${responses.length} response(s)).`);
   });
@@ -538,10 +514,7 @@ export function registerAppHome(app: App) {
     if (amt <= 0) { await ack({ response_action: 'errors', errors: { expense_amount: 'Enter a valid amount greater than 0' } }); return; }
     await ack();
     await afterAck(uid, client, async () => {
-      const catMap: Record<string, any> = { Travel: { Travel_Expense__c: amt }, Food: { Food_Expense__c: amt }, Accommodation: { Accommodation_Expense__c: amt }, Fuel: { Travel_Expense__c: amt }, Parking: { Miscellaneous_Expense__c: amt }, Miscellaneous: { Miscellaneous_Expense__c: amt } };
-      await insertRecord(SOBJECTS.EXPENSE, { Name: `Exp - ${visitId}`, Visit_WD__c: visitId, Amount__c: amt, ...(catMap[cat] || {}), Description__c: vals.expense_desc?.expense_desc?.value || '', TransactionDate__c: B.todayDateString() });
-      const v = await getVisitById(visitId);
-      await updateRecord(SOBJECTS.VISIT, visitId, { Total_Expense_Amount__c: (v?.Total_Expense_Amount__c || 0) + amt });
+      await addExpenseRecord(visitId, amt, cat, vals.expense_desc?.expense_desc?.value || '', B.todayDateString());
       setFlash(uid, `:white_check_mark: Expense of ${B.formatCurrency(amt)} recorded.`);
     });
   });
@@ -557,33 +530,18 @@ export function registerAppHome(app: App) {
     await afterAck(uid, client, async () => {
       const userCtx = await resolveUser(uid, client);
       if (!userCtx) { setFlash(uid, ':warning: Session expired. Please refresh.'); return; }
-      const resolved = await resolveCustomStoreForVisit(storeId);
-      const retailerName = resolved.retailerName || storeName;
-      const visitPayload: Record<string, any> = {
-        Retail_Store_Custom__c: resolved.customStoreId,
-        AccountId__c: resolved.accountId,
-        SFA_User__c: userCtx.sfUserId,
-        Visit_Date__c: date,
-        PlannedDate__c: date,
-        Status__c: VISIT_STATUS.PLANNED,
-        Type__c: VISIT_TYPE.AD_HOC,
-        Purpose__c: vals.adhoc_purpose?.adhoc_purpose?.selected_option?.value || 'Order Taking',
-      };
-      // Prefer standard RetailStore field when picker returned a standard id
-      if (storeId.startsWith('0YQ')) {
-        visitPayload.Retail_Store__c = storeId;
-      }
-      const ownerId = userCtx.sfUserRecordId || SF_CONSTANTS.DEFAULT_OWNER_ID;
-      visitPayload.OwnerId = ownerId;
-      if (userCtx.sfUserRecordId) {
-        visitPayload.User__c = userCtx.sfUserRecordId;
-        visitPayload.Visitor__c = userCtx.sfUserRecordId;
-      } else {
-        visitPayload.User__c = SF_CONSTANTS.DEFAULT_OWNER_ID;
-        visitPayload.Visitor__c = SF_CONSTANTS.DEFAULT_OWNER_ID;
-      }
-      await insertRecord(SOBJECTS.VISIT, visitPayload);
-      setFlash(uid, `:white_check_mark: Visit created for *${retailerName}* on ${date}.`);
+      const slackUser = await client.users.info({ user: uid }).catch(() => null);
+      const email = slackUser?.user?.profile?.email || '';
+      const result = await createAdhocVisit({
+        storeId,
+        date,
+        purpose: vals.adhoc_purpose?.adhoc_purpose?.selected_option?.value || 'Order Taking',
+        sfaUserId: userCtx.sfUserId,
+        ownerEmail: email,
+        sfUserRecordId: userCtx.sfUserRecordId,
+        type: VISIT_TYPE.AD_HOC,
+      });
+      setFlash(uid, `:white_check_mark: Visit created for *${result.retailerName || storeName}* on ${date}.`);
     });
   });
 
@@ -675,29 +633,27 @@ export function registerAppHome(app: App) {
     const data = { ...prev, ...curr };
     await ack();
     await afterAck(uid, client, async () => {
-      // Option B: skip Partner_Request__c when ONBOARDING_SKIP_SALESFORCE=true (demo mode).
-      // Org validations are never hit; Slack approval flow is the source of truth.
-      if (config.onboardingSkipSalesforce) {
-        console.log('[SFA] Onboarding: skipping Salesforce write (ONBOARDING_SKIP_SALESFORCE=true)');
-      } else {
-        await insertRecord(SOBJECTS.PARTNER_REQUEST, {
-          First_Name__c: data.onb_first_name || '', Last_Name__c: data.onb_last_name || '',
-          Enterprise_Name__c: data.onb_enterprise || '', Company_Name__c: data.onb_enterprise || '',
-          Phone__c: data.onb_phone || '', Email__c: data.onb_email || '',
-          ...(data.onb_year_est ? { Year_Established__c: parseInt(data.onb_year_est) } : {}),
-          Business_Type__c: data.onb_biz_type || 'Individual',
-          Street__c: data.onb_street || '', City__c: data.onb_city || '',
-          State__c: data.onb_state || '', Postal_Code__c: data.onb_postal || '',
-          Country__c: data.onb_country || 'India',
-          Store_Footage_in_sqft__c: parseFloat(data.onb_store_area || '0') || null,
-          Store_Type__c: data.onb_store_type || null,
-          Expected_Opening_date__c: data.onb_opening_date || null,
-          PAN_Card_Numer__c: data.onb_pan || '', GST_Number__c: data.onb_gst || '',
-          Aadhar_Number__c: data.onb_aadhar || null,
-          Bank_Name__c: data.onb_bank_name || '', Bank_Account_Number__c: data.onb_bank_ac || '',
-          IFSC_Code__c: data.onb_ifsc || '', Onboarding_Stage__c: 'Submitted', Status__c: 'Submitted',
-        });
-      }
+      setProofClient(client);
+      await insertPartnerRequest({
+        First_Name__c: data.onb_first_name || '', Last_Name__c: data.onb_last_name || '',
+        Enterprise_Name__c: data.onb_enterprise || '', Company_Name__c: data.onb_enterprise || '',
+        Phone__c: data.onb_phone || '', Email__c: data.onb_email || '',
+        ...(data.onb_year_est ? { Year_Established__c: parseInt(data.onb_year_est) } : {}),
+        Business_Type__c: data.onb_biz_type || 'Individual',
+        Street__c: data.onb_street || '', City__c: data.onb_city || '',
+        State__c: data.onb_state || '', Postal_Code__c: data.onb_postal || '',
+        Country__c: data.onb_country || 'India',
+        Store_Footage_in_sqft__c: parseFloat(data.onb_store_area || '0') || null,
+        Store_Type__c: data.onb_store_type || null,
+        Expected_Opening_date__c: data.onb_opening_date || null,
+        PAN_Card_Numer__c: data.onb_pan || '', GST_Number__c: data.onb_gst || '',
+        Aadhar_Number__c: data.onb_aadhar || null,
+        Bank_Name__c: data.onb_bank_name || '', Bank_Account_Number__c: data.onb_bank_ac || '',
+        IFSC_Code__c: data.onb_ifsc || '', Onboarding_Stage__c: 'Submitted', Status__c: 'Submitted',
+        // demo store also keeps raw form keys
+        onb_first_name: data.onb_first_name, onb_last_name: data.onb_last_name,
+        onb_enterprise: data.onb_enterprise, onb_phone: data.onb_phone, onb_email: data.onb_email,
+      });
 
       // Slack approval request (always)
       try {
@@ -715,8 +671,8 @@ export function registerAppHome(app: App) {
       sfUserCache.delete(uid);
       setFlash(
         uid,
-        config.onboardingSkipSalesforce
-          ? ':white_check_mark: Retailer onboarding submitted! Awaiting approval. _(Slack-only demo — Salesforce write skipped)_'
+        config.demoMode || config.onboardingSkipSalesforce
+          ? ':white_check_mark: Retailer onboarding submitted! Awaiting approval. _(demo / Slack-only)_'
           : ':white_check_mark: Retailer onboarding submitted successfully! Awaiting approval.'
       );
     });
@@ -758,6 +714,8 @@ export function registerAppHome(app: App) {
     } catch (e) {
       console.error('[SFA] Failed to post onboarding decision message:', e);
     }
+
+    await recordOnboardingDecision(meta.enterprise, decision).catch(console.error);
   }
 
   app.action('sfa_onboarding_approve', async ({ ack, body, client }) => {

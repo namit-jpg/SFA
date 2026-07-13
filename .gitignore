@@ -3,3 +3,8 @@ dist/
 .env
 *.log
 .DS_Store
+
+data/demo-store.json
+
+data/demo-lists.json
+

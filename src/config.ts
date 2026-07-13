@@ -19,11 +19,27 @@ export const config = {
   port: parseInt(process.env.PORT || '3000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
   /**
-   * When true, retailer onboarding never writes Partner_Request__c.
+   * When true, all app data uses the local demo store (optional Slack Lists proof).
+   * Salesforce is not used. Restart bot after changing this flag.
+   */
+  demoMode: (process.env.DEMO_MODE || '').toLowerCase() === 'true',
+  /**
+   * When true (and DEMO_MODE is false), retailer onboarding never writes Partner_Request__c.
    * Slack approval channel flow still runs. Demo-friendly; no org changes required.
-   * Set ONBOARDING_SKIP_SALESFORCE=true in .env and restart with --update-env.
    */
   onboardingSkipSalesforce: (process.env.ONBOARDING_SKIP_SALESFORCE || '').toLowerCase() === 'true',
+  /** Optional channel for demo write proof messages (e.g. C0123...). */
+  demoProofChannel: process.env.DEMO_PROOF_CHANNEL || '',
+  /** Optional path for demo JSON store (default: ./data/demo-store.json). */
+  demoStorePath: process.env.DEMO_STORE_PATH || '',
+  /** Optional Slack List IDs for client-visible proof (paid Slack plans). */
+  demoLists: {
+    visits: process.env.DEMO_LIST_VISITS || '',
+    stores: process.env.DEMO_LIST_STORES || '',
+    expenses: process.env.DEMO_LIST_EXPENSES || '',
+    surveys: process.env.DEMO_LIST_SURVEYS || '',
+    onboarding: process.env.DEMO_LIST_ONBOARDING || '',
+  },
 };
 
 export const SOBJECTS = {
@@ -69,8 +85,10 @@ export function validateConfig(): void {
   for (const [name, val] of requiredSlack) {
     if (!val) throw new Error(`Missing required env var: ${name}`);
   }
-  if (!config.salesforce.accessToken && (!config.salesforce.username || !config.salesforce.password)) {
-    throw new Error('Must set either SF_ACCESS_TOKEN (+ SF_INSTANCE_URL) or both SF_USERNAME and SF_PASSWORD');
+  if (!config.demoMode) {
+    if (!config.salesforce.accessToken && (!config.salesforce.username || !config.salesforce.password)) {
+      throw new Error('Must set either SF_ACCESS_TOKEN (+ SF_INSTANCE_URL) or both SF_USERNAME and SF_PASSWORD');
+    }
   }
   if (isNaN(config.port) || config.port < 1 || config.port > 65535) {
     throw new Error(`Invalid PORT: ${process.env.PORT}`);

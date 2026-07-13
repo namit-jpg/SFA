@@ -2,16 +2,45 @@
 
 ## Architecture
 ```
-Slack Client ←→ Bolt (Socket Mode) ←→ Salesforce (jsforce)
-                    ↑
-              PM2 on GCP VM (e2-micro, Debian 12)
+Slack Client ←→ Bolt (Socket Mode) ←→ data facade
+                    ↑                      │
+              PM2 on GCP VM          DEMO_MODE?
+                                         │
+                          ┌──────────────┴──────────────┐
+                          no                            yes
+                          ▼                             ▼
+                    Salesforce (jsforce)          Local demo store
+                                                 (+ optional DEMO_PROOF_CHANNEL / Lists)
 ```
 
 ## Prerequisites
 - Node.js 22+, npm, git, gh CLI, gcloud CLI
 - Slack App with Socket Mode enabled (tokens in .env)
-- Salesforce Connected App or username/password+token
+- Salesforce Connected App or username/password+token (**not required when `DEMO_MODE=true`**)
 - GCP project with Compute Engine API enabled
+
+---
+
+## Demo Mode
+
+```env
+DEMO_MODE=true
+# optional proof channel (bot must be invited):
+# DEMO_PROOF_CHANNEL=C0123456789
+# optional JSON path (default ./data/demo-store.json):
+# DEMO_STORE_PATH=./data/demo-store.json
+```
+
+- **On:** no Salesforce; seed stores (incl. Blue Mart), visits, products in `data/demo-store.json`
+- **Off (default):** full Salesforce path (unchanged)
+- Restart with `pm2 restart sfa-bot --update-env` after changing the flag
+- Home tab shows a demo banner when active
+- Core flows: visits, stores, expenses, surveys, notes, onboarding, stub orders
+- **Slack Lists auto-create** on boot (`slackLists.create`): Visits, Stores, Expenses, Surveys, Onboarding
+  - Requires **paid Slack workspace** + bot scopes `lists:read` / `lists:write` (reinstall app after manifest update)
+  - Registry saved to `data/demo-lists.json` (list + column IDs); reuses on next start
+  - Optional override: `DEMO_LIST_VISITS=F…` etc. in `.env`
+  - Seed stores written once into Stores list; later writes append rows for client proof
 
 ## Repository
 - **GitHub**: https://github.com/namit-jpg/SFA

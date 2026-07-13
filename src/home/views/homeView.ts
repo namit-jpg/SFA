@@ -1,4 +1,5 @@
 import * as B from '../../utils/blocks';
+import { config } from '../../config';
 
 export function buildHomeView(
   userName: string, dailyVisits: any[], insights: any,
@@ -11,7 +12,11 @@ export function buildHomeView(
 
   blocks.push(B.header(`Good Morning, ${userName}`));
   blocks.push(B.context(`:calendar: ${dateStr}`));
-  blocks.push(B.section(':large_green_circle: Online • SFA synced'));
+  blocks.push(B.section(
+    config.demoMode
+      ? ':test_tube: Online • Demo mode (local data)'
+      : ':large_green_circle: Online • SFA synced'
+  ));
   blocks.push(B.divider());
 
   // Attendance
