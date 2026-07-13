@@ -24,7 +24,11 @@ import { buildAdhocVisitModal } from '../modals/adhocVisitModal';
 import { buildBeatPlanModal } from '../modals/beatPlanModal';
 import { buildStartVisitModal } from '../modals/startVisitModal';
 import { buildEndVisitModal } from '../modals/endVisitModal';
-import { buildOnboardingStep1Modal, buildOnboardingStep2Modal, buildOnboardingStep3Modal } from '../modals/retailerOnboardingModal';
+import {
+  buildOnboardingStep1Modal, buildOnboardingStep2Modal, buildOnboardingStep3Modal,
+  buildOnboardingApprovalMessage, buildOnboardingResolvedBlocks, buildOnboardingDecisionMessage,
+  parseOnboardingApprovalValue, ONBOARDING_APPROVAL_CHANNEL,
+} from '../modals/retailerOnboardingModal';
 import { buildCompetingProductsModal, buildVisitNotesModal, buildRescheduleModal } from '../modals/competingNotesModals';
 import { buildOrderVisitPickerModal } from '../modals/orderVisitPickerModal';
 import * as B from '../utils/blocks';
@@ -650,6 +654,7 @@ export function registerAppHome(app: App) {
     const data = { ...prev, ...curr };
     await ack();
     await afterAck(uid, client, async () => {
+      // Existing Salesforce insert — unchanged
       await insertRecord(SOBJECTS.PARTNER_REQUEST, {
         First_Name__c: data.onb_first_name || '', Last_Name__c: data.onb_last_name || '',
         Enterprise_Name__c: data.onb_enterprise || '', Company_Name__c: data.onb_enterprise || '',
@@ -667,9 +672,70 @@ export function registerAppHome(app: App) {
         Bank_Name__c: data.onb_bank_name || '', Bank_Account_Number__c: data.onb_bank_ac || '',
         IFSC_Code__c: data.onb_ifsc || '', Onboarding_Stage__c: 'Submitted', Status__c: 'Submitted',
       });
+
+      // Slack-only demo: post approval request to channel (does not change SF status)
+      try {
+        const enterprise = data.onb_enterprise || 'Retailer';
+        await client.chat.postMessage({
+          channel: ONBOARDING_APPROVAL_CHANNEL,
+          text: `New retailer onboarding request: ${enterprise}`,
+          blocks: buildOnboardingApprovalMessage(data, uid),
+        });
+      } catch (e) {
+        console.error('[SFA] Failed to post onboarding approval message:', e);
+      }
+
       sfUserCache.delete(uid);
-      setFlash(uid, ':white_check_mark: Retailer onboarding submitted successfully!');
+      setFlash(uid, ':white_check_mark: Retailer onboarding submitted successfully! Awaiting approval.');
     });
+  });
+
+  // Onboarding Approve / Reject (Slack channel only — no Salesforce updates)
+  async function handleOnboardingDecision(
+    decision: 'approved' | 'rejected',
+    body: any,
+    client: any
+  ) {
+    const decidedBy = body.user?.id as string;
+    const action = body.actions?.[0];
+    const meta = parseOnboardingApprovalValue(action?.value);
+    const channel = body.channel?.id || ONBOARDING_APPROVAL_CHANNEL;
+    const messageTs = body.message?.ts;
+
+    // Replace buttons on the original message so it cannot be actioned twice
+    if (messageTs && body.message?.blocks) {
+      try {
+        await client.chat.update({
+          channel,
+          ts: messageTs,
+          text: `Retailer onboarding ${decision}: ${meta.enterprise}`,
+          blocks: buildOnboardingResolvedBlocks(body.message.blocks, decision, decidedBy),
+        });
+      } catch (e) {
+        console.error('[SFA] Failed to update onboarding request message:', e);
+      }
+    }
+
+    // Post a new channel message with the decision
+    try {
+      await client.chat.postMessage({
+        channel: ONBOARDING_APPROVAL_CHANNEL,
+        text: `Retailer ${decision}: ${meta.enterprise}`,
+        blocks: buildOnboardingDecisionMessage(meta, decision, decidedBy),
+      });
+    } catch (e) {
+      console.error('[SFA] Failed to post onboarding decision message:', e);
+    }
+  }
+
+  app.action('sfa_onboarding_approve', async ({ ack, body, client }) => {
+    await ack();
+    await handleOnboardingDecision('approved', body, client);
+  });
+
+  app.action('sfa_onboarding_reject', async ({ ack, body, client }) => {
+    await ack();
+    await handleOnboardingDecision('rejected', body, client);
   });
 
   app.view('sfa_noop_modal', async ({ ack }) => { await ack({ response_action: 'clear' }); });
