@@ -138,13 +138,89 @@ export async function getBeatWithLineItems(beatId: string) {
 
 export async function searchStores(searchTerm: string): Promise<RetailStoreRecord[]> {
   const escaped = escLike(searchTerm);
-  return query<RetailStoreRecord>(
+  // Prefer custom RetailStore__c, then fill remaining slots from standard RetailStore
+  // (many Retailer accounts only have standard RetailStore records, e.g. Blue Mart).
+  const custom = await query<RetailStoreRecord>(
     `SELECT Id, Name, Store_Code__c, Account__c, Account__r.Name
      FROM ${SOBJECTS.RETAIL_STORE}
      WHERE (Name LIKE '%${escaped}%' OR Store_Code__c LIKE '%${escaped}%' OR Account__r.Name LIKE '%${escaped}%')
        AND Account__r.RecordType.DeveloperName = 'Retailer'
      ORDER BY Name ASC LIMIT 25`
   );
+  if (custom.length >= 25) return custom;
+
+  const standard = await query<{ Id: string; Name: string; AccountId: string; Account?: { Name: string } }>(
+    `SELECT Id, Name, AccountId, Account.Name
+     FROM ${SOBJECTS.RETAIL_STORE_STANDARD}
+     WHERE (Name LIKE '%${escaped}%' OR Account.Name LIKE '%${escaped}%')
+       AND Account.RecordType.DeveloperName = 'Retailer'
+     ORDER BY Name ASC LIMIT 25`
+  );
+
+  const seenAccounts = new Set(custom.map((s) => s.Account__c).filter(Boolean));
+  const merged = [...custom];
+  for (const s of standard) {
+    if (merged.length >= 25) break;
+    if (s.AccountId && seenAccounts.has(s.AccountId)) continue;
+    if (s.AccountId) seenAccounts.add(s.AccountId);
+    merged.push({
+      Id: s.Id,
+      Name: s.Name,
+      Store_Code__c: '',
+      Account__c: s.AccountId,
+      Account__r: s.Account ? { Name: s.Account.Name } : undefined,
+    });
+  }
+  return merged;
+}
+
+/** Resolve a picker store id (custom or standard) to a RetailStore__c id for Visit__c. */
+export async function resolveCustomStoreForVisit(
+  storeId: string
+): Promise<{ customStoreId: string; accountId: string | null; retailerName: string }> {
+  // Custom RetailStore__c ids typically start with a1U in this org; still try custom first.
+  const custom = await getStoreById(storeId);
+  if (custom) {
+    return {
+      customStoreId: custom.Id,
+      accountId: custom.Account__c || null,
+      retailerName: custom.Account__r?.Name || custom.Name || 'Store',
+    };
+  }
+
+  const standard = await queryOne<{ Id: string; Name: string; AccountId: string; Account?: { Name: string } }>(
+    `SELECT Id, Name, AccountId, Account.Name
+     FROM ${SOBJECTS.RETAIL_STORE_STANDARD}
+     WHERE Id = '${esc(storeId)}' LIMIT 1`
+  );
+  if (!standard) {
+    throw new Error(`Store not found: ${storeId}`);
+  }
+
+  const accountId = standard.AccountId || null;
+  const retailerName = standard.Account?.Name || standard.Name || 'Store';
+
+  if (accountId) {
+    const existing = await queryOne<RetailStoreRecord>(
+      `SELECT Id, Name, Store_Code__c, Account__c, Account__r.Name
+       FROM ${SOBJECTS.RETAIL_STORE}
+       WHERE Account__c = '${esc(accountId)}'
+       ORDER BY CreatedDate ASC LIMIT 1`
+    );
+    if (existing) {
+      return {
+        customStoreId: existing.Id,
+        accountId,
+        retailerName: existing.Account__r?.Name || existing.Name || retailerName,
+      };
+    }
+  }
+
+  const customStoreId = await insertRecord(SOBJECTS.RETAIL_STORE, {
+    Name: standard.Name || retailerName,
+    Account__c: accountId,
+  });
+  return { customStoreId, accountId, retailerName };
 }
 
 export async function getStoreById(storeId: string): Promise<RetailStoreRecord | null> {

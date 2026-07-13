@@ -5,6 +5,7 @@ import { getSFUserByEmail, getSFAUserByEmail, getSFAUserByUserId,
   getStoreVisitHistory, getStoreOrders, getFrequentlyBoughtProducts,
   getAccountContact, getLastOrderSummary, getStoreVisitLogs,
   getPastVisits, searchProducts, getRepsList, searchStores,
+  resolveCustomStoreForVisit,
   getStandardPricebookId, getPriceForProduct,
   updateVisitNotes, rescheduleVisit, createCompetingProduct,
   getActivePromotions, getVisitExpenses,
@@ -556,11 +557,11 @@ export function registerAppHome(app: App) {
     await afterAck(uid, client, async () => {
       const userCtx = await resolveUser(uid, client);
       if (!userCtx) { setFlash(uid, ':warning: Session expired. Please refresh.'); return; }
-      const store = await getStoreById(storeId);
-      const retailerName = store?.Account__r?.Name || store?.Name || storeName;
+      const resolved = await resolveCustomStoreForVisit(storeId);
+      const retailerName = resolved.retailerName || storeName;
       const visitPayload: Record<string, any> = {
-        Retail_Store_Custom__c: storeId,
-        AccountId__c: store?.Account__c || null,
+        Retail_Store_Custom__c: resolved.customStoreId,
+        AccountId__c: resolved.accountId,
         SFA_User__c: userCtx.sfUserId,
         Visit_Date__c: date,
         PlannedDate__c: date,
@@ -568,6 +569,10 @@ export function registerAppHome(app: App) {
         Type__c: VISIT_TYPE.AD_HOC,
         Purpose__c: vals.adhoc_purpose?.adhoc_purpose?.selected_option?.value || 'Order Taking',
       };
+      // Prefer standard RetailStore field when picker returned a standard id
+      if (storeId.startsWith('0YQ')) {
+        visitPayload.Retail_Store__c = storeId;
+      }
       const ownerId = userCtx.sfUserRecordId || SF_CONSTANTS.DEFAULT_OWNER_ID;
       visitPayload.OwnerId = ownerId;
       if (userCtx.sfUserRecordId) {
