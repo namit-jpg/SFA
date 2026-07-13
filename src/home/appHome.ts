@@ -32,7 +32,7 @@ import {
 import { buildCompetingProductsModal, buildVisitNotesModal, buildRescheduleModal } from '../modals/competingNotesModals';
 import { buildOrderVisitPickerModal } from '../modals/orderVisitPickerModal';
 import * as B from '../utils/blocks';
-import { SOBJECTS, VISIT_STATUS, VISIT_TYPE, SF_CONSTANTS } from '../config';
+import { config, SOBJECTS, VISIT_STATUS, VISIT_TYPE, SF_CONSTANTS } from '../config';
 import { insertRecord, updateRecord } from '../salesforce/connection';
 
 const USER_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -654,26 +654,31 @@ export function registerAppHome(app: App) {
     const data = { ...prev, ...curr };
     await ack();
     await afterAck(uid, client, async () => {
-      // Existing Salesforce insert — unchanged
-      await insertRecord(SOBJECTS.PARTNER_REQUEST, {
-        First_Name__c: data.onb_first_name || '', Last_Name__c: data.onb_last_name || '',
-        Enterprise_Name__c: data.onb_enterprise || '', Company_Name__c: data.onb_enterprise || '',
-        Phone__c: data.onb_phone || '', Email__c: data.onb_email || '',
-        ...(data.onb_year_est ? { Year_Established__c: parseInt(data.onb_year_est) } : {}),
-        Business_Type__c: data.onb_biz_type || 'Individual',
-        Street__c: data.onb_street || '', City__c: data.onb_city || '',
-        State__c: data.onb_state || '', Postal_Code__c: data.onb_postal || '',
-        Country__c: data.onb_country || 'India',
-        Store_Footage_in_sqft__c: parseFloat(data.onb_store_area || '0') || null,
-        Store_Type__c: data.onb_store_type || null,
-        Expected_Opening_date__c: data.onb_opening_date || null,
-        PAN_Card_Numer__c: data.onb_pan || '', GST_Number__c: data.onb_gst || '',
-        Aadhar_Number__c: data.onb_aadhar || null,
-        Bank_Name__c: data.onb_bank_name || '', Bank_Account_Number__c: data.onb_bank_ac || '',
-        IFSC_Code__c: data.onb_ifsc || '', Onboarding_Stage__c: 'Submitted', Status__c: 'Submitted',
-      });
+      // Option B: skip Partner_Request__c when ONBOARDING_SKIP_SALESFORCE=true (demo mode).
+      // Org validations are never hit; Slack approval flow is the source of truth.
+      if (config.onboardingSkipSalesforce) {
+        console.log('[SFA] Onboarding: skipping Salesforce write (ONBOARDING_SKIP_SALESFORCE=true)');
+      } else {
+        await insertRecord(SOBJECTS.PARTNER_REQUEST, {
+          First_Name__c: data.onb_first_name || '', Last_Name__c: data.onb_last_name || '',
+          Enterprise_Name__c: data.onb_enterprise || '', Company_Name__c: data.onb_enterprise || '',
+          Phone__c: data.onb_phone || '', Email__c: data.onb_email || '',
+          ...(data.onb_year_est ? { Year_Established__c: parseInt(data.onb_year_est) } : {}),
+          Business_Type__c: data.onb_biz_type || 'Individual',
+          Street__c: data.onb_street || '', City__c: data.onb_city || '',
+          State__c: data.onb_state || '', Postal_Code__c: data.onb_postal || '',
+          Country__c: data.onb_country || 'India',
+          Store_Footage_in_sqft__c: parseFloat(data.onb_store_area || '0') || null,
+          Store_Type__c: data.onb_store_type || null,
+          Expected_Opening_date__c: data.onb_opening_date || null,
+          PAN_Card_Numer__c: data.onb_pan || '', GST_Number__c: data.onb_gst || '',
+          Aadhar_Number__c: data.onb_aadhar || null,
+          Bank_Name__c: data.onb_bank_name || '', Bank_Account_Number__c: data.onb_bank_ac || '',
+          IFSC_Code__c: data.onb_ifsc || '', Onboarding_Stage__c: 'Submitted', Status__c: 'Submitted',
+        });
+      }
 
-      // Slack-only demo: post approval request to channel (does not change SF status)
+      // Slack approval request (always)
       try {
         const enterprise = data.onb_enterprise || 'Retailer';
         await client.chat.postMessage({
@@ -683,10 +688,16 @@ export function registerAppHome(app: App) {
         });
       } catch (e) {
         console.error('[SFA] Failed to post onboarding approval message:', e);
+        throw e;
       }
 
       sfUserCache.delete(uid);
-      setFlash(uid, ':white_check_mark: Retailer onboarding submitted successfully! Awaiting approval.');
+      setFlash(
+        uid,
+        config.onboardingSkipSalesforce
+          ? ':white_check_mark: Retailer onboarding submitted! Awaiting approval. _(Slack-only demo — Salesforce write skipped)_'
+          : ':white_check_mark: Retailer onboarding submitted successfully! Awaiting approval.'
+      );
     });
   });
 

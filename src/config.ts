@@ -18,6 +18,12 @@ export const config = {
   },
   port: parseInt(process.env.PORT || '3000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
+  /**
+   * When true, retailer onboarding never writes Partner_Request__c.
+   * Slack approval channel flow still runs. Demo-friendly; no org changes required.
+   * Set ONBOARDING_SKIP_SALESFORCE=true in .env and restart with --update-env.
+   */
+  onboardingSkipSalesforce: (process.env.ONBOARDING_SKIP_SALESFORCE || '').toLowerCase() === 'true',
 };
 
 export const SOBJECTS = {
