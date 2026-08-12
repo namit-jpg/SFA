@@ -28,9 +28,19 @@ function ensureLoaded(): DemoDb {
       if (!db.version || !Array.isArray(db.stores)) throw new Error('invalid store');
       // Repair partial stores from older seeds
       const seed = buildSeedDb();
+      const loadedVersion = db.version;
       let repaired = false;
-      if (!Array.isArray(db.products) || db.products.length === 0) {
+      if (loadedVersion < seed.version || !Array.isArray(db.products) || db.products.length === 0) {
         db.products = seed.products;
+        db.version = seed.version;
+        repaired = true;
+      }
+      if (loadedVersion < seed.version) {
+        const seedVisitIds = new Set(seed.visits.map((visit) => visit.Id));
+        db.visits = [
+          ...seed.visits,
+          ...db.visits.filter((visit) => !seedVisitIds.has(visit.Id)),
+        ];
         repaired = true;
       }
       if (!Array.isArray(db.expenses)) { db.expenses = []; repaired = true; }
